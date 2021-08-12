@@ -6,7 +6,7 @@ options:
 substitutions:
   _IMAGE_NAME: pocs-camera
   _TAG_NAME: latest
-  _DOCKER_BUILDX_PLATFORMS: 'linux/amd64,linux/arm64'
+  _DOCKER_BUILDX_PLATFORMS: 'linux/amd64,linux/arm/v7,linux/arm64'
 
 steps:
   - name: 'gcr.io/cloud-builders/docker'
