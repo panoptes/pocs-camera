@@ -5,7 +5,8 @@ ENV PORT=6565
 ENV BASE_DIR=/images
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gphoto2
+    apt-get install -y --no-install-recommends \
+      gphoto2 uvicorn
 
 # Create user, image directory, and update permissions for usb.
 RUN useradd --no-create-home -G plugdev ${USERNAME} && \
