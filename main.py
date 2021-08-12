@@ -37,7 +37,7 @@ def startup_tasks():
 @app.post('/')
 def gphoto(command: Command):
     """Perform arbitrary gphoto2 command."""
-    logger.info(f'Received {command=!r}')
+    logger.info(f'Received command={command!r}')
 
     # Fix the filename.
     filename_match = re.search(r'--filename (.*.cr2)', command.arguments)
@@ -46,7 +46,7 @@ def gphoto(command: Command):
 
         # If the application has a base directory, save there with same filename.
         if settings.base_dir is not None:
-            logger.debug(f'Saving file to {settings.base_dir=} instead of {str(filename_path)}')
+            logger.debug(f'Saving file to {settings.base_dir} instead of {str(filename_path)}')
             app_filename = settings.base_dir / filename_path.name
 
             # Replace in arguments.
@@ -57,7 +57,7 @@ def gphoto(command: Command):
     # Build the full command.
     full_command = [shutil.which('gphoto2'), *command.arguments.split(' ')]
 
-    logger.debug(f'Running {full_command=!r}')
+    logger.debug(f'Running {full_command!r}')
     completed_proc = subprocess.run(full_command, capture_output=True)
 
     # Populate return items.

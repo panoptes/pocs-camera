@@ -1,7 +1,6 @@
-FROM python:3-slim
+FROM python:3.7-slim
 
 ENV USERNAME=panoptes
-ENV PORT=6565
 ENV BASE_DIR=/images
 
 RUN apt-get update && \
@@ -14,12 +13,12 @@ RUN useradd --no-create-home -G plugdev ${USERNAME} && \
     mkdir -p /app && chmod 777 /app
 
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 WORKDIR /app
 USER "${USERNAME}"
 COPY main.py .
 
-EXPOSE "${PORT}"
+EXPOSE 6565
 
-CMD uvicorn main:app --host 0.0.0.0 --port "${PORT}"
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "6565"]
