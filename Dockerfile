@@ -17,8 +17,8 @@ RUN pip install -r requirements.txt
 
 WORKDIR /app
 USER "${USERNAME}"
-COPY camera.py .
+COPY main.py .
 
 EXPOSE 6565
 
-CMD uvicorn camera:app --host 0.0.0.0 --port "${PORT}"
+CMD uvicorn main:app --host 0.0.0.0 --port "${PORT}"
