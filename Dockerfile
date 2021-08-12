@@ -1,18 +1,24 @@
 FROM python:3-slim
 
+ENV USERNAME=panoptes
+ENV PORT=6565
+ENV BASE_DIR=/images
+
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    gphoto2 &&\
-    apt-get clean autoclean
+    apt-get install -y --no-install-recommends gphoto2
+
+# Create user, image directory, and update permissions for usb.
+RUN useradd --no-create-home -G plugdev ${USERNAME} && \
+    mkdir -p "${BASE_DIR}" && chmod 777 "${BASE_DIR}" && \
+    mkdir -p /app && chmod 777 /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
 
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+USER "${USERNAME}"
+COPY camera.py .
 
-ENV PYTHONPATH=/app
-ENV PORT=8000
-EXPOSE 8000
+EXPOSE 6565
 
-COPY . .
-
-CMD python3 -m uvicorn main:app --host 0.0.0.0 --port $PORT
+CMD uvicorn camera:app --host 0.0.0.0 --port "${PORT}"

@@ -1,4 +1,4 @@
 fastapi
+loguru
+pydantic
 uvicorn[standard]
-"git+https://github.com/panoptes/panoptes-utils@develop#egg=panoptes-utils[config,images]"
-"git+https://github.com/panoptes/POCS@develop#egg=panoptes-pocs"
