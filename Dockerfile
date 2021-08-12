@@ -6,7 +6,7 @@ ENV BASE_DIR=/images
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      gphoto2 python3-uvicorn
+      gphoto2 uvicorn
 
 # Create user, image directory, and update permissions for usb.
 RUN useradd --no-create-home -G plugdev ${USERNAME} && \
@@ -20,6 +20,6 @@ WORKDIR /app
 USER "${USERNAME}"
 COPY main.py .
 
-EXPOSE "${PORT}"
+EXPOSE 6565
 
 CMD uvicorn main:app --host 0.0.0.0 --port "${PORT}"
