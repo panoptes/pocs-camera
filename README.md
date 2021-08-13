@@ -17,7 +17,7 @@ If the `BASE_DIR` envvar is set when the service starts, any `--filename` argume
 ## Docker
 <a name="docker"></a>
 
-A Dockerfile is provided and a pre-made image is available at for `amd64` and `arm64` architectures:
+A Dockerfile is provided and a pre-made image is available at for `amd64`, `arm64`, and `armv7` architectures:
 
 ```sh
 docker pull gcr.io/panoptes-exp/pocs-camera
