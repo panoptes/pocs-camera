@@ -2,6 +2,7 @@ options:
   substitutionOption: ALLOW_LOOSE
   env:
     - 'DOCKER_CLI_EXPERIMENTAL=enabled'
+timeout: 3600s  # 1 hour
 
 substitutions:
   _IMAGE_NAME: pocs-camera
