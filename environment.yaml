@@ -1,0 +1,7 @@
+channels:
+  - https://conda.anaconda.org/conda-forge
+dependencies:
+  - fastapi
+  - loguru
+  - pydantic
+  - uvicorn[standard]
