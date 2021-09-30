@@ -23,7 +23,7 @@ A Dockerfile is provided and a pre-made image is available at for `amd64` and `a
 docker pull gcr.io/panoptes-exp/pocs-camera
 ```
 
-The container runs with the `panoptes` (`uid/gid` = `1000:1000`) and the images are saved into the `/images` directory, which should be mapped accordingly when the service is started. 
+The container runs with the `panoptes` (`uid/gid` = `1000:1000`) and the images are saved into the `/images` directory, which should be mapped accordingly when the service is started. See also the information on the `BASE_DIR` env var in the [Examples](#examples) below.
 
 The container also requires access to the USB bus of the host, which can mostly easily be accomplished with the `--privileged` option to `docker run`.
 
@@ -64,7 +64,7 @@ The endpoint expects the `arguments` field as single string containing the argum
 
 The below examples assume the service is running at the ip `192.168.1.100` on the default port `6565`.
 
-> :info: Note: The service blocks while using gphoto2, so if an exposure is 60 seconds long then there will be no response from the server during that time.
+> 💡 Note: The service blocks while using gphoto2, so if an exposure is 60 seconds long then there will be no response from the server during that time.
 >
 > An async service is planned for the future.
 
