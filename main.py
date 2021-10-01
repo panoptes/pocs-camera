@@ -46,10 +46,7 @@ def gphoto(command: Command):
 
         # If the application has a base directory, save there with same filename.
         if settings.base_dir is not None:
-            logger.debug(f'Saving file to {settings.base_dir} instead of {str(filename_path)}')
-            app_filename = settings.base_dir / filename_path.name
-
-            # Replace in arguments.
+            app_filename = settings.base_dir / filename_path
             filename_in_args = f'--filename {str(filename_path)}'
             logger.debug(f'Replacing {filename_path} with {app_filename}.')
             command.arguments = command.arguments.replace(filename_in_args, f'--filename {app_filename}')
