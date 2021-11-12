@@ -1,5 +1,6 @@
+version: "3.7"
 services:
-  camera-service:
+  pocs-camera-service:
     image: "${IMAGE_NAME:-gcr.io/panoptes-exp/pocs-camera}:${TAG_NAME:-latest}"
     build:
       context: ../
@@ -8,8 +9,8 @@ services:
     tty: true
     container_name: camera-service
     privileged: true
-    port:
-      - 6565:6565
+    ports:
+      - "6565:6565"
     restart: on-failure
     volumes:
       - $PWD/images:/images

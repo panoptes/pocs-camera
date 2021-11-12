@@ -4,4 +4,5 @@ dependencies:
   - fastapi
   - loguru
   - pydantic
+  - python>=3.9
   - uvicorn[standard]
