@@ -1,5 +1,6 @@
 options:
   substitutionOption: ALLOW_LOOSE
+  machineType: E2_HIGHCPU_8
   env:
     - 'DOCKER_CLI_EXPERIMENTAL=enabled'
 timeout: 3600s  # 1 hour
