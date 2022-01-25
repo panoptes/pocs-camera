@@ -3,4 +3,5 @@ loguru
 pydantic
 requests
 pigpio
+panoptes-utils
 uvicorn[standard]

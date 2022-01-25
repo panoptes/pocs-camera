@@ -4,13 +4,14 @@ import shutil
 import subprocess
 import time
 from enum import IntEnum
-from typing import Optional, List
+from typing import Optional, List, Dict
 from loguru import logger
 import pigpio
 import requests
 
 from pydantic import BaseSettings, DirectoryPath, AnyHttpUrl
 from fastapi import FastAPI
+from panoptes.utils.time import current_time
 
 
 class State(IntEnum):
@@ -20,13 +21,19 @@ class State(IntEnum):
 
 class Settings(BaseSettings):
     base_dir: Optional[DirectoryPath]
-    pins: List[int] = [17, 18]
+    pins: Dict[int, str] = {17: '', 18: ''}
     cam_ids: Optional[List[str]]
     processes: Optional[List]
 
 
+class CameraInfo(BaseSettings):
+    cam_id: Optional[str]
+    pin: Optional[int]
+    port: Optional[str]
+
+
 class Exposure(BaseSettings):
-    pin: int
+    cam_id: str
     exptime: float
     num_exposures: int = 1
 
@@ -44,7 +51,7 @@ def startup_tasks():
         gpio.set_mode(pin, pigpio.OUTPUT)
 
 
-def start_gphoto_tether(cam_id, sequence_id):
+def start_gphoto_tether(sequence_id):
     gphoto2 = shutil.which('gphoto2')
     if not gphoto2:  # pragma: no cover
         raise Exception('gphoto2 is missing, please install or use the endpoint option.')
@@ -52,25 +59,33 @@ def start_gphoto_tether(cam_id, sequence_id):
     home_dir = os.getenv('HOME')
 
     for port in list_connected_cameras():
+        command = [gphoto2, '--port', port, '--get-config', 'serialnumber']
+        completed_proc = subprocess.run(command, capture_output=True)
+        cam_id = completed_proc.stdout.decode().split('\n')[3].split(' ')[-1][-6:]
+
         filename_pattern = f'${home_dir}/images/{cam_id}/{sequence_id}/%Y%m%dT%H%M%S.%C'
         print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
-        command = [gphoto2, '--port', port, '--filename', filename_pattern]
+        command = [gphoto2, '--port', port, '--filename', filename_pattern, '--capture-tethered']
 
         proc = subprocess.Popen(command)
         settings.processes.append(proc)
 
 
-@app.post('/take-pic')
+@app.post('/take-pics')
 def take_pic(exposure: Exposure):
-    """Take a picture by setting GPIO pin high"""
-    logger.info(f'Taking picture for {exposure.pin=} with {exposure.exptime=}')
+    """Take a picture by setting GPIO port high"""
+    logger.info(f'Taking picture for {exposure.cam_id=} with {exposure.exptime=}')
+
+    start_gphoto_tether(current_time(flatten=True))
+
+    pin = 17
 
     pic_num = 1
     while True:
         print(f'Taking photo {pic_num} of {exposure.num_exposures}')
-        gpio.write(exposure.pin, State.HIGH)
+        gpio.write(pin, State.HIGH)
         time.sleep(exposure.exptime)
-        gpio.write(exposure.pin, State.LOW)
+        gpio.write(pin, State.LOW)
 
         if pic_num == exposure.num_exposures:
             break
