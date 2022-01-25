@@ -1,18 +1,14 @@
-import re
-import shutil
-import subprocess
 import time
-from enum import Enum
+from enum import IntEnum
 from typing import Optional, List
-from loguru import logger
+
 import pigpio
-import requests
-
-from pydantic import BaseSettings, DirectoryPath, AnyHttpUrl
 from fastapi import FastAPI
+from loguru import logger
+from pydantic import BaseSettings, DirectoryPath
 
 
-class State(Enum):
+class State(IntEnum):
     LOW = 0
     HIGH = 1
 
@@ -59,39 +55,3 @@ def take_pic(exposure: Exposure):
             break
         else:
             pic_num += 1
-
-
-@app.get('/list-cameras')
-def list_connected_cameras(endpoint: Optional[AnyHttpUrl] = None):
-    """Detect connected cameras.
-
-    Uses gphoto2 to try and detect which cameras are connected. Cameras should
-    be known and placed in config but this is a useful utility.
-
-    Returns:
-        list: A list of the ports with detected cameras.
-    """
-
-    result = ''
-    if endpoint is not None:
-        response = requests.post(endpoint, json=dict(arguments='--auto-detect'))
-        if response.ok:
-            result = response.json()['output']
-    else:
-        gphoto2 = shutil.which('gphoto2')
-        if not gphoto2:  # pragma: no cover
-            raise Exception('gphoto2 is missing, please install or use the endpoint option.')
-        command = [gphoto2, '--auto-detect']
-        result = subprocess.check_output(command).decode('utf-8')
-    lines = result.split('\n')
-
-    ports = []
-
-    for line in lines:
-        camera_match = re.match(r'([\w\d\s_.]{30})\s(usb:\d{3},\d{3})', line)
-        if camera_match:
-            # camera_name = camera_match.group(1).strip()
-            port = camera_match.group(2).strip()
-            ports.append(port)
-
-    return ports
