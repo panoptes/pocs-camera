@@ -27,7 +27,7 @@ RUN pip install -r /tmp/requirements.txt
 
 WORKDIR "$WORK_DIR"
 USER "${USERNAME}"
-COPY main.py .
+COPY gphoto2.py .
 
 EXPOSE 6565
 

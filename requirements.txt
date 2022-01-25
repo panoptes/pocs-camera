@@ -1,4 +1,6 @@
 fastapi
 loguru
 pydantic
+requests
+pigpio
 uvicorn[standard]
