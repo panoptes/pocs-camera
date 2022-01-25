@@ -38,7 +38,7 @@ class Exposure(BaseSettings):
     num_exposures: int = 1
 
 
-settings = Settings()
+settings = Settings(processes=list())
 app = FastAPI()
 gpio = pigpio.pi()
 
