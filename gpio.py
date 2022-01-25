@@ -77,6 +77,7 @@ def take_pic(exposure: Exposure):
     logger.info(f'Taking picture for {exposure.cam_id=} with {exposure.exptime=}')
 
     start_gphoto_tether(current_time(flatten=True))
+    time.sleep(5)
 
     pin = 17
 
