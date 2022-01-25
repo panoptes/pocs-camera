@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     cam_ids: Optional[List[str]]
 
 
+class Exposure(BaseSettings):
+    pin: int
+    exptime: float
+    num_exposures: int = 1
+
+
 settings = Settings()
 app = FastAPI()
 gpio = pigpio.pi()
@@ -37,19 +43,19 @@ def startup_tasks():
 
 
 @app.post('/take-pic')
-def take_pic(pin: int, exptime: float, num_exposures=1):
+def take_pic(exposure: Exposure):
     """Take a picture by setting GPIO pin high"""
-    logger.info(f'Taking picture for {pin=} with {exptime=}')
+    logger.info(f'Taking picture for {exposure.pin=} with {exposure.exptime=}')
 
     pic_num = 1
     while True:
-        print(f'Taking photo {pic_num} of {num_exposures}')
-        gpio.write(pin, State.HIGH)
-        time.sleep(exptime)
-        gpio.write(pin, State.LOW)
+        print(f'Taking photo {pic_num} of {exposure.num_exposures}')
+        gpio.write(exposure.pin, State.HIGH)
+        time.sleep(exposure.exptime)
+        gpio.write(exposure.pin, State.LOW)
 
-        if pic_num == num_exposures:
-            print(f'Reached {num_exposures=}, stopping')
+        if pic_num == exposure.num_exposures:
+            print(f'Reached {exposure.num_exposures=}, stopping')
             break
         else:
             pic_num += 1
