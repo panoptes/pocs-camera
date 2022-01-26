@@ -32,8 +32,8 @@ class CameraInfo(BaseSettings):
     port: Optional[str]
 
 
-class Exposure(BaseSettings):
-    cam_id: str
+class Observation(BaseSettings):
+    sequence_id: str
     exptime: float
     num_exposures: int = 1
 
@@ -71,24 +71,30 @@ def start_gphoto_tether(sequence_id):
         settings.processes.append(proc)
 
 
-@app.post('/take-pics')
-def take_pic(exposure: Exposure):
+@app.post('/take-observation')
+def take_pic(observation: Observation):
     """Take a picture by setting GPIO port high"""
-    logger.info(f'Taking picture for {exposure.cam_id=} with {exposure.exptime=}')
+    logger.info(f'Taking picture for {observation.sequence_id=} with {observation.exptime=}')
 
-    start_gphoto_tether(current_time(flatten=True))
+    start_gphoto_tether(observation.sequence_id)
     time.sleep(5)
 
-    pin = 17
+    pins = [17, 18]
 
     pic_num = 1
     while True:
-        print(f'Taking photo {pic_num} of {exposure.num_exposures}')
-        gpio.write(pin, State.HIGH)
-        time.sleep(exposure.exptime)
-        gpio.write(pin, State.LOW)
+        for pin in pins:
+            print(f'Taking photo {pic_num:03d} of {observation.num_exposures:03d}')
+            gpio.write(pin, State.HIGH)
 
-        if pic_num == exposure.num_exposures:
+        time.sleep(observation.exptime)
+
+        for pin in pins:
+            print(f'Stopping photo {pic_num:03d} of {observation.num_exposures:03d}')
+            gpio.write(pin, State.LOW)
+
+        if pic_num == observation.num_exposures:
+            print(f'Reached {observation.num_exposures=}, stopping photos')
             break
         else:
             pic_num += 1
