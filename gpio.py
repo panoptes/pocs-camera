@@ -51,6 +51,22 @@ def startup_tasks():
         gpio.set_mode(pin, pigpio.OUTPUT)
 
 
+@app.on_event('shutdown')
+def startup_tasks():
+    # Kills gphoto processes
+    print('Stopping gphoto2 tether processes')
+    for proc in settings.processes:
+        try:
+            outs, errs = proc.communicate(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            outs, errs = proc.communicate()
+        finally:
+            if outs > '':
+                print(f'{outs=}')
+            if errs > '':
+                print(f'{errs=}')
+
 def start_gphoto_tether(sequence_id):
     gphoto2 = shutil.which('gphoto2')
     if not gphoto2:  # pragma: no cover
@@ -77,7 +93,7 @@ def take_pic(observation: Observation):
     logger.info(f'Taking picture for {observation.sequence_id=} with {observation.exptime=}')
 
     start_gphoto_tether(observation.sequence_id)
-    time.sleep(5)
+    time.sleep(2)
 
     pins = [17, 18]
 
@@ -98,6 +114,7 @@ def take_pic(observation: Observation):
             break
         else:
             pic_num += 1
+            time.sleep(0.5)
 
 
 @app.get('/list-cameras')
