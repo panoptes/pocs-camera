@@ -163,7 +163,7 @@ def list_connected_cameras(endpoint: Optional[AnyHttpUrl] = None):
     return ports
 
 
-@app.post('/gphoto')
+@app.post('/')
 def gphoto(command: Command):
     """Perform arbitrary gphoto2 command."""
     logger.info(f'Received command={command!r}')
