@@ -4,14 +4,14 @@ import shutil
 import subprocess
 import time
 from enum import IntEnum
+from pathlib import Path
 from typing import Optional, List, Dict
 from loguru import logger
 import pigpio
 import requests
 
-from pydantic import BaseSettings, DirectoryPath, AnyHttpUrl
+from pydantic import BaseModel, DirectoryPath, AnyHttpUrl
 from fastapi import FastAPI
-from panoptes.utils.time import current_time
 
 
 class State(IntEnum):
@@ -19,20 +19,29 @@ class State(IntEnum):
     HIGH = 1
 
 
-class Settings(BaseSettings):
+class Settings(BaseModel):
     base_dir: Optional[DirectoryPath]
     pins: Dict[int, str] = {17: '', 18: ''}
     cam_ids: Optional[List[str]]
     processes: Optional[List]
 
 
-class CameraInfo(BaseSettings):
+class Command(BaseModel):
+    """Accepts an arbitrary command string which is passed to gphoto2."""
+    arguments: str = '--auto-detect'
+    success: bool = False
+    output: Optional[str]
+    error: Optional[str]
+    returncode: Optional[int]
+
+
+class CameraInfo(BaseModel):
     cam_id: Optional[str]
     pin: Optional[int]
     port: Optional[str]
 
 
-class Observation(BaseSettings):
+class Observation(BaseModel):
     sequence_id: str
     exptime: float
     num_exposures: int = 1
@@ -66,6 +75,7 @@ def startup_tasks():
                 print(f'{outs=}')
             if errs > '':
                 print(f'{errs=}')
+
 
 def start_gphoto_tether(sequence_id):
     gphoto2 = shutil.which('gphoto2')
@@ -151,3 +161,37 @@ def list_connected_cameras(endpoint: Optional[AnyHttpUrl] = None):
             ports.append(port)
 
     return ports
+
+
+@app.post('/gphoto')
+def gphoto(command: Command):
+    """Perform arbitrary gphoto2 command."""
+    logger.info(f'Received command={command!r}')
+
+    # Fix the filename.
+    filename_match = re.search(r'--filename (.*.cr2)', command.arguments)
+    if filename_match:
+        filename_path = Path(filename_match.group(1))
+
+        # If the application has a base directory, save there with same filename.
+        if settings.base_dir is not None:
+            app_filename = settings.base_dir / filename_path
+            filename_in_args = f'--filename {str(filename_path)}'
+            logger.debug(f'Replacing {filename_path} with {app_filename}.')
+            command.arguments = command.arguments.replace(filename_in_args,
+                                                          f'--filename {app_filename}')
+
+    # Build the full command.
+    full_command = [shutil.which('gphoto2'), *command.arguments.split(' ')]
+
+    logger.debug(f'Running {full_command!r}')
+    completed_proc = subprocess.run(full_command, capture_output=True)
+
+    # Populate return items.
+    command.success = completed_proc.returncode >= 0
+    command.returncode = completed_proc.returncode
+    command.output = completed_proc.stdout
+    command.error = completed_proc.stderr
+
+    logger.info(f'Returning {command!r}')
+    return command
