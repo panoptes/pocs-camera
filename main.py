@@ -188,7 +188,7 @@ async def start_gphoto_tether(output_directory):
         completed_proc = subprocess.run(command, capture_output=True)
         cam_id = completed_proc.stdout.decode().split('\n')[3].split(' ')[-1][-6:]
 
-        filename_pattern = f'{cam_id}/{output_directory}/%Y%m%dT%H%M%S.%C'
+        filename_pattern = f'{output_directory}/%Y%m%dT%H%M%S.%C'
         print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
         command = [gphoto2, '--port', port, '--filename', filename_pattern, '--capture-tethered']
 
