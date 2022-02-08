@@ -87,12 +87,12 @@ async def take_observation(observation: Observation):
                 tg.start_soon(release_shutter, pin, observation.exptime)
 
         print(f'Done with picture set at {dt.utcnow()}')
+        await sleep(0.5)
         if pic_num == observation.num_exposures:
             print(f'Reached {observation.num_exposures=}, stopping photos')
             break
         else:
             pic_num += 1
-            await sleep(0.5)
 
     await stop_gphoto_tether()
 
