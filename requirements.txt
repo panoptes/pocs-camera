@@ -1,7 +1,8 @@
+anyio
 fastapi
 loguru
+panoptes-utils
+pigpio
 pydantic
 requests
-pigpio
-panoptes-utils
 uvicorn[standard]

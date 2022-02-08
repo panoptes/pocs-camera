@@ -1,4 +1,3 @@
-import os
 import re
 import shutil
 import subprocess
@@ -8,6 +7,7 @@ from typing import Optional, List, Dict, Union
 
 import pigpio
 import asyncio
+from anyio import sleep, create_task_group, run
 from fastapi import FastAPI
 from loguru import logger
 from pydantic import BaseModel, DirectoryPath, Field, BaseSettings
@@ -76,20 +76,21 @@ async def take_observation(observation: Observation):
     logger.info(f'Taking picture for {observation.output_directory=} with {observation.exptime=}')
 
     await start_gphoto_tether(observation.output_directory)
-    await asyncio.sleep(2)
+    await sleep(1)
 
     pic_num = 1
     while True:
-        for pin in app_settings.pins:
-            print(f'Taking photo {pic_num:03d} of {observation.num_exposures:03d}')
-            await release_shutter(pin, exptime=observation.exptime)
+        async with create_task_group() as tg:
+            for pin in app_settings.pins:
+                print(f'Taking photo {pic_num:03d} of {observation.num_exposures:03d}')
+                tg.start_soon(release_shutter, pin, observation.exptime)
 
         if pic_num == observation.num_exposures:
             print(f'Reached {observation.num_exposures=}, stopping photos')
             break
         else:
             pic_num += 1
-            await asyncio.sleep(0.5)
+            await sleep(0.5)
 
     await stop_gphoto_tether()
 
@@ -162,7 +163,7 @@ async def release_shutter(pin: int, exptime: float):
     """Trigger the shutter release for given exposure time."""
     print(f'Triggering {pin=} for {exptime=} seconds.')
     await open_shutter(pin)
-    await asyncio.sleep(exptime)
+    await sleep(exptime)
     await close_shutter(pin)
 
 
