@@ -2,18 +2,15 @@ import os
 import re
 import shutil
 import subprocess
-import time
 from enum import IntEnum
 from pathlib import Path
 from typing import Optional, List, Dict, Union
 
-from anyio import sleep
-from loguru import logger
 import pigpio
-import requests
-
-from pydantic import BaseModel, DirectoryPath, AnyHttpUrl, Field, BaseSettings
+import asyncio
 from fastapi import FastAPI
+from loguru import logger
+from pydantic import BaseModel, DirectoryPath, Field, BaseSettings
 
 
 class State(IntEnum):
@@ -79,7 +76,7 @@ async def take_observation(observation: Observation):
     logger.info(f'Taking picture for {observation.output_directory=} with {observation.exptime=}')
 
     await start_gphoto_tether(observation.output_directory)
-    time.sleep(2)
+    await asyncio.sleep(2)
 
     pic_num = 1
     while True:
@@ -92,7 +89,7 @@ async def take_observation(observation: Observation):
             break
         else:
             pic_num += 1
-            time.sleep(0.5)
+            await asyncio.sleep(0.5)
 
     await stop_gphoto_tether()
 
@@ -111,7 +108,6 @@ async def list_connected_cameras() -> dict:
     if not gphoto2:  # pragma: no cover
         raise Exception('gphoto2 is missing, please install or use the endpoint option.')
     command = [gphoto2, '--auto-detect']
-    get_port_command = [gphoto2, '--port', port, '--get-config', 'serialnumber']
     result = subprocess.check_output(command).decode('utf-8')
     lines = result.split('\n')
 
@@ -120,6 +116,7 @@ async def list_connected_cameras() -> dict:
         camera_match = re.match(r'([\w\d\s_.]{30})\s(usb:\d{3},\d{3})', line)
         if camera_match:
             port = camera_match.group(2).strip()
+            get_port_command = [gphoto2, '--port', port, '--get-config', 'serialnumber']
             completed_proc = subprocess.run(get_port_command, capture_output=True)
             cam_id = completed_proc.stdout.decode().split('\n')[3].split(' ')[-1][-6:]
             cameras[cam_id] = port
@@ -165,7 +162,7 @@ async def release_shutter(pin: int, exptime: float):
     """Trigger the shutter release for given exposure time."""
     print(f'Triggering {pin=} for {exptime=} seconds.')
     await open_shutter(pin)
-    await sleep(exptime)
+    await asyncio.sleep(exptime)
     await close_shutter(pin)
 
 
