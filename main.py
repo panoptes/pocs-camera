@@ -53,7 +53,7 @@ gpio = pigpio.pi()
 
 
 @app.on_event('startup')
-def startup_tasks():
+async def startup_tasks():
     """Set up the cameras.
 
     If no settings are specified, this will attempt to associate a GPIO pin
@@ -68,7 +68,7 @@ def startup_tasks():
 
 
 @app.on_event('shutdown')
-def shutdown_tasks():
+async def shutdown_tasks():
     print('Stopping any running gphoto2 tether processes')
     await stop_gphoto_tether()
 
@@ -98,39 +98,33 @@ async def take_observation(observation: Observation):
 
 
 @app.get('/list-cameras')
-async def list_connected_cameras(endpoint: Optional[AnyHttpUrl] = None):
+async def list_connected_cameras() -> dict:
     """Detect connected cameras.
 
     Uses gphoto2 to try and detect which cameras are connected. Cameras should
     be known and placed in config but this is a useful utility.
 
     Returns:
-        list: A list of the ports with detected cameras.
+        dict: Camera names and usb ports from gphoto2.
     """
-
-    result = ''
-    if endpoint is not None:
-        response = requests.post(endpoint, json=dict(arguments='--auto-detect'))
-        if response.ok:
-            result = response.json()['output']
-    else:
-        gphoto2 = shutil.which('gphoto2')
-        if not gphoto2:  # pragma: no cover
-            raise Exception('gphoto2 is missing, please install or use the endpoint option.')
-        command = [gphoto2, '--auto-detect']
-        result = subprocess.check_output(command).decode('utf-8')
+    gphoto2 = shutil.which('gphoto2')
+    if not gphoto2:  # pragma: no cover
+        raise Exception('gphoto2 is missing, please install or use the endpoint option.')
+    command = [gphoto2, '--auto-detect']
+    get_port_command = [gphoto2, '--port', port, '--get-config', 'serialnumber']
+    result = subprocess.check_output(command).decode('utf-8')
     lines = result.split('\n')
 
-    ports = []
-
+    cameras = dict()
     for line in lines:
         camera_match = re.match(r'([\w\d\s_.]{30})\s(usb:\d{3},\d{3})', line)
         if camera_match:
-            # camera_name = camera_match.group(1).strip()
             port = camera_match.group(2).strip()
-            ports.append(port)
+            completed_proc = subprocess.run(get_port_command, capture_output=True)
+            cam_id = completed_proc.stdout.decode().split('\n')[3].split(' ')[-1][-6:]
+            cameras[cam_id] = port
 
-    return ports
+    return cameras
 
 
 @app.post('/{cam_name}/gphoto')
@@ -193,7 +187,8 @@ async def start_gphoto_tether(output_directory):
 
     home_dir = os.getenv('HOME')
 
-    for port in list_connected_cameras():
+    cameras = await list_connected_cameras()
+    for cam_id, port in cameras.items():
         command = [gphoto2, '--port', port, '--get-config', 'serialnumber']
         completed_proc = subprocess.run(command, capture_output=True)
         cam_id = completed_proc.stdout.decode().split('\n')[3].split(' ')[-1][-6:]
@@ -203,12 +198,12 @@ async def start_gphoto_tether(output_directory):
         command = [gphoto2, '--port', port, '--filename', filename_pattern, '--capture-tethered']
 
         proc = subprocess.Popen(command)
-        app_settings.processes.append(proc)
+        app_settings.processes[cam_id] = proc
 
 
 async def stop_gphoto_tether():
     """Stops all gphoto tether processes."""
-    for proc in app_settings.processes:
+    for cam_id, proc in app_settings.processes.items():
         try:
             outs, errs = proc.communicate(timeout=15)
         except subprocess.TimeoutExpired:
