@@ -44,7 +44,7 @@ class GphotoCommand(BaseModel):
     returncode: Optional[int]
 
 
-app_settings = AppSettings(base_dir=os.getenv('HOME', '.'), pins=Settings().gpio_pins)
+app_settings = AppSettings(pins=Settings().gpio_pins)
 app = FastAPI()
 gpio = pigpio.pi()
 
@@ -188,7 +188,7 @@ async def start_gphoto_tether(output_directory):
         completed_proc = subprocess.run(command, capture_output=True)
         cam_id = completed_proc.stdout.decode().split('\n')[3].split(' ')[-1][-6:]
 
-        filename_pattern = f'{app_settings.base_dir}/{cam_id}/{output_directory}/%Y%m%dT%H%M%S.%C'
+        filename_pattern = f'{cam_id}/{output_directory}/%Y%m%dT%H%M%S.%C'
         print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
         command = [gphoto2, '--port', port, '--filename', filename_pattern, '--capture-tethered']
 
