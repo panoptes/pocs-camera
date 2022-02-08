@@ -5,12 +5,14 @@ import subprocess
 import time
 from enum import IntEnum
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
+
+from anyio import sleep
 from loguru import logger
 import pigpio
 import requests
 
-from pydantic import BaseModel, DirectoryPath, AnyHttpUrl
+from pydantic import BaseModel, DirectoryPath, AnyHttpUrl, Field, BaseSettings
 from fastapi import FastAPI
 
 
@@ -19,14 +21,24 @@ class State(IntEnum):
     HIGH = 1
 
 
-class Settings(BaseModel):
+class Settings(BaseSettings):
+    gpio_pins: List[int] = [17, 18]
+
+
+class AppSettings(BaseModel):
     base_dir: Optional[DirectoryPath]
-    pins: Dict[int, str] = {17: '', 18: ''}
-    cam_ids: Optional[List[str]]
-    processes: Optional[List]
+    pins: List[int] = Field(default_factory=list)
+    cameras: Dict = Field(default_factory=dict)
+    processes: Dict = Field(default_factory=dict)
 
 
-class Command(BaseModel):
+class Observation(BaseModel):
+    output_directory: str
+    exptime: Union[List[float], float]
+    num_exposures: int = 1
+
+
+class GphotoCommand(BaseModel):
     """Accepts an arbitrary command string which is passed to gphoto2."""
     arguments: str = '--auto-detect'
     success: bool = False
@@ -35,89 +47,45 @@ class Command(BaseModel):
     returncode: Optional[int]
 
 
-class CameraInfo(BaseModel):
-    cam_id: Optional[str]
-    pin: Optional[int]
-    port: Optional[str]
-
-
-class Observation(BaseModel):
-    sequence_id: str
-    exptime: float
-    num_exposures: int = 1
-
-
-settings = Settings(processes=list())
+app_settings = AppSettings(pins=Settings().gpio_pins)
 app = FastAPI()
 gpio = pigpio.pi()
 
 
 @app.on_event('startup')
 def startup_tasks():
-    # Get GPIO pins and set mode.
-    for pin in settings.pins:
-        print(f'Setting {pin=} as OUTPUT')
+    """Set up the cameras.
+
+    If no settings are specified, this will attempt to associate a GPIO pin
+    with a usb port via gphoto2.
+    """
+    # Get GPIO pins and set OUTPUT mode.
+    for i, pin in enumerate(app_settings.pins):
+        cam_name = f'Cam{i:02d}'
+        print(f'Setting {pin=} as OUTPUT and assigning {cam_name=}')
         gpio.set_mode(pin, pigpio.OUTPUT)
+        app_settings.cameras[cam_name] = pin
 
 
 @app.on_event('shutdown')
-def startup_tasks():
-    # Kills gphoto processes
-    print('Stopping gphoto2 tether processes')
-    for proc in settings.processes:
-        try:
-            outs, errs = proc.communicate(timeout=15)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            outs, errs = proc.communicate()
-        finally:
-            if outs > '':
-                print(f'{outs=}')
-            if errs > '':
-                print(f'{errs=}')
-
-
-def start_gphoto_tether(sequence_id):
-    gphoto2 = shutil.which('gphoto2')
-    if not gphoto2:  # pragma: no cover
-        raise Exception('gphoto2 is missing, please install or use the endpoint option.')
-
-    home_dir = os.getenv('HOME')
-
-    for port in list_connected_cameras():
-        command = [gphoto2, '--port', port, '--get-config', 'serialnumber']
-        completed_proc = subprocess.run(command, capture_output=True)
-        cam_id = completed_proc.stdout.decode().split('\n')[3].split(' ')[-1][-6:]
-
-        filename_pattern = f'{home_dir}/images/{cam_id}/{sequence_id}/%Y%m%dT%H%M%S.%C'
-        print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
-        command = [gphoto2, '--port', port, '--filename', filename_pattern, '--capture-tethered']
-
-        proc = subprocess.Popen(command)
-        settings.processes.append(proc)
+def shutdown_tasks():
+    print('Stopping any running gphoto2 tether processes')
+    await stop_gphoto_tether()
 
 
 @app.post('/take-observation')
-def take_pic(observation: Observation):
+async def take_observation(observation: Observation):
     """Take a picture by setting GPIO port high"""
-    logger.info(f'Taking picture for {observation.sequence_id=} with {observation.exptime=}')
+    logger.info(f'Taking picture for {observation.output_directory=} with {observation.exptime=}')
 
-    start_gphoto_tether(observation.sequence_id)
+    await start_gphoto_tether(observation.output_directory)
     time.sleep(2)
-
-    pins = [17, 18]
 
     pic_num = 1
     while True:
-        for pin in pins:
+        for pin in app_settings.pins:
             print(f'Taking photo {pic_num:03d} of {observation.num_exposures:03d}')
-            gpio.write(pin, State.HIGH)
-
-        time.sleep(observation.exptime)
-
-        for pin in pins:
-            print(f'Stopping photo {pic_num:03d} of {observation.num_exposures:03d}')
-            gpio.write(pin, State.LOW)
+            await release_shutter(pin, exptime=observation.exptime)
 
         if pic_num == observation.num_exposures:
             print(f'Reached {observation.num_exposures=}, stopping photos')
@@ -126,9 +94,11 @@ def take_pic(observation: Observation):
             pic_num += 1
             time.sleep(0.5)
 
+    await stop_gphoto_tether()
+
 
 @app.get('/list-cameras')
-def list_connected_cameras(endpoint: Optional[AnyHttpUrl] = None):
+async def list_connected_cameras(endpoint: Optional[AnyHttpUrl] = None):
     """Detect connected cameras.
 
     Uses gphoto2 to try and detect which cameras are connected. Cameras should
@@ -163,8 +133,8 @@ def list_connected_cameras(endpoint: Optional[AnyHttpUrl] = None):
     return ports
 
 
-@app.post('/')
-def gphoto(command: Command):
+@app.post('/{cam_name}/gphoto')
+async def gphoto(cam_name: str, command: GphotoCommand):
     """Perform arbitrary gphoto2 command."""
     logger.info(f'Received command={command!r}')
 
@@ -174,8 +144,8 @@ def gphoto(command: Command):
         filename_path = Path(filename_match.group(1))
 
         # If the application has a base directory, save there with same filename.
-        if settings.base_dir is not None:
-            app_filename = settings.base_dir / filename_path
+        if app_settings.base_dir is not None:
+            app_filename = app_settings.base_dir / filename_path
             filename_in_args = f'--filename {str(filename_path)}'
             logger.debug(f'Replacing {filename_path} with {app_filename}.')
             command.arguments = command.arguments.replace(filename_in_args,
@@ -195,3 +165,57 @@ def gphoto(command: Command):
 
     logger.info(f'Returning {command!r}')
     return command
+
+
+async def release_shutter(pin: int, exptime: float):
+    """Trigger the shutter release for given exposure time."""
+    print(f'Triggering {pin=} for {exptime=} seconds.')
+    await open_shutter(pin)
+    await sleep(exptime)
+    await close_shutter(pin)
+
+
+async def open_shutter(pin: int):
+    """Opens the shutter for the camera."""
+    gpio.write(pin, State.HIGH)
+
+
+async def close_shutter(pin: int):
+    """Closes the shutter for the camera."""
+    gpio.write(pin, State.LOW)
+
+
+async def start_gphoto_tether(output_directory):
+    """Starts a gphoto2 tether and saves images to the given output_directory."""
+    gphoto2 = shutil.which('gphoto2')
+    if not gphoto2:  # pragma: no cover
+        raise Exception('gphoto2 is missing, please install or use the endpoint option.')
+
+    home_dir = os.getenv('HOME')
+
+    for port in list_connected_cameras():
+        command = [gphoto2, '--port', port, '--get-config', 'serialnumber']
+        completed_proc = subprocess.run(command, capture_output=True)
+        cam_id = completed_proc.stdout.decode().split('\n')[3].split(' ')[-1][-6:]
+
+        filename_pattern = f'{home_dir}/images/{cam_id}/{output_directory}/%Y%m%dT%H%M%S.%C'
+        print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
+        command = [gphoto2, '--port', port, '--filename', filename_pattern, '--capture-tethered']
+
+        proc = subprocess.Popen(command)
+        app_settings.processes.append(proc)
+
+
+async def stop_gphoto_tether():
+    """Stops all gphoto tether processes."""
+    for proc in app_settings.processes:
+        try:
+            outs, errs = proc.communicate(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            outs, errs = proc.communicate()
+        finally:
+            if outs > '':
+                print(f'{outs=}')
+            if errs > '':
+                print(f'{errs=}')
