@@ -124,8 +124,8 @@ async def list_connected_cameras() -> dict:
     return cameras
 
 
-@app.post('/{cam_name}/gphoto')
-async def gphoto(cam_name: str, command: GphotoCommand):
+@app.post('/gphoto')
+async def gphoto(command: GphotoCommand):
     """Perform arbitrary gphoto2 command."""
     logger.info(f'Received command={command!r}')
 
@@ -201,6 +201,7 @@ async def start_gphoto_tether(output_directory):
 async def stop_gphoto_tether():
     """Stops all gphoto tether processes."""
     for cam_id, proc in app_settings.processes.items():
+        outs = errs = ''
         try:
             outs, errs = proc.communicate(timeout=15)
         except subprocess.TimeoutExpired:
