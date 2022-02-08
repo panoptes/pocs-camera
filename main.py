@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
 
 class AppSettings(BaseModel):
-    base_dir: Optional[DirectoryPath]
+    base_dir: Optional[DirectoryPath] = 'images'
     pins: List[int] = Field(default_factory=list)
     cameras: Dict = Field(default_factory=dict)
     processes: Dict = Field(default_factory=dict)
@@ -184,7 +184,7 @@ async def start_gphoto_tether(output_directory):
 
     cameras = await list_connected_cameras()
     for cam_id, port in cameras.items():
-        filename_pattern = f'{cam_id}/{output_directory}/%Y%m%dT%H%M%S.%C'
+        filename_pattern = f'{app_settings.base_dir}/{cam_id}/{output_directory}/%Y%m%dT%H%M%S.%C'
         print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
         command = [gphoto2, '--port', port, '--filename', filename_pattern, '--capture-tethered']
 
