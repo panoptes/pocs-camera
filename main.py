@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Optional, List, Dict, Union
 
 import pigpio
-import asyncio
-from anyio import sleep, create_task_group, run
+from datetime import datetime as dt
+from anyio import sleep, create_task_group
 from fastapi import FastAPI
 from loguru import logger
 from pydantic import BaseModel, DirectoryPath, Field, BaseSettings
@@ -80,11 +80,12 @@ async def take_observation(observation: Observation):
 
     pic_num = 1
     while True:
+        print(f'Taking photo {pic_num:03d} of {observation.num_exposures:03d} at {dt.utcnow()}')
         async with create_task_group() as tg:
             for pin in app_settings.pins:
-                print(f'Taking photo {pic_num:03d} of {observation.num_exposures:03d}')
                 tg.start_soon(release_shutter, pin, observation.exptime)
 
+        print(f'Done with picture set at {dt.utcnow()}')
         if pic_num == observation.num_exposures:
             print(f'Reached {observation.num_exposures=}, stopping photos')
             break
@@ -161,7 +162,7 @@ async def gphoto(command: GphotoCommand):
 
 async def release_shutter(pin: int, exptime: float):
     """Trigger the shutter release for given exposure time."""
-    print(f'Triggering {pin=} for {exptime=} seconds.')
+    print(f'Triggering {pin=} for {exptime=} seconds at {dt.utcnow()}.')
     await open_shutter(pin)
     await sleep(exptime)
     await close_shutter(pin)
