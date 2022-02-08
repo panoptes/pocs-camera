@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
 
 class AppSettings(BaseModel):
-    base_dir: Optional[DirectoryPath] = 'images'
+    base_dir: Optional[DirectoryPath] = Path('images')
     pins: List[int] = Field(default_factory=list)
     cameras: Dict = Field(default_factory=dict)
     processes: Dict = Field(default_factory=dict)
