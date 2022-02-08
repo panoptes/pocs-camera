@@ -205,7 +205,7 @@ async def stop_gphoto_tether():
             proc.kill()
             outs, errs = proc.communicate()
         finally:
-            if outs > '':
+            if outs and outs > '':
                 print(f'{outs=}')
-            if errs > '':
+            if errs and errs > '':
                 print(f'{errs=}')
