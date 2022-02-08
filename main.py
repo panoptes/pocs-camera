@@ -1,4 +1,3 @@
-import os
 import re
 import shutil
 import subprocess
@@ -182,15 +181,13 @@ async def start_gphoto_tether(output_directory):
     if not gphoto2:  # pragma: no cover
         raise Exception('gphoto2 is missing, please install or use the endpoint option.')
 
-    home_dir = os.getenv('HOME')
-
     cameras = await list_connected_cameras()
     for cam_id, port in cameras.items():
         command = [gphoto2, '--port', port, '--get-config', 'serialnumber']
         completed_proc = subprocess.run(command, capture_output=True)
         cam_id = completed_proc.stdout.decode().split('\n')[3].split(' ')[-1][-6:]
 
-        filename_pattern = f'{home_dir}/images/{cam_id}/{output_directory}/%Y%m%dT%H%M%S.%C'
+        filename_pattern = f'images/{cam_id}/{output_directory}/%Y%m%dT%H%M%S.%C'
         print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
         command = [gphoto2, '--port', port, '--filename', filename_pattern, '--capture-tethered']
 
