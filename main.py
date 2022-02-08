@@ -30,8 +30,9 @@ class AppSettings(BaseModel):
 
 
 class Observation(BaseModel):
-    output_directory: str
+    sequence_id: str
     exptime: Union[List[float], float]
+    field_name: str = ''
     num_exposures: int = 1
 
 
@@ -73,9 +74,9 @@ async def shutdown_tasks():
 @app.post('/take-observation')
 async def take_observation(observation: Observation):
     """Take a picture by setting GPIO port high"""
-    logger.info(f'Taking picture for {observation.output_directory=} with {observation.exptime=}')
+    logger.info(f'Taking picture for {observation.field_name=} with {observation.exptime=}')
 
-    await start_gphoto_tether(observation.output_directory)
+    await start_gphoto_tether(observation.sequence_id, observation.field_name)
     await sleep(1)
 
     pic_num = 1
@@ -178,15 +179,16 @@ async def close_shutter(pin: int):
     gpio.write(pin, State.LOW)
 
 
-async def start_gphoto_tether(output_directory):
-    """Starts a gphoto2 tether and saves images to the given output_directory."""
+async def start_gphoto_tether(sequence_id, field_name):
+    """Starts a gphoto2 tether and saves images to the given field_name."""
     gphoto2 = shutil.which('gphoto2')
     if not gphoto2:  # pragma: no cover
         raise Exception('gphoto2 is missing, please install or use the endpoint option.')
 
     cameras = await list_connected_cameras()
     for cam_id, port in cameras.items():
-        filename_pattern = f'{app_settings.base_dir}/{cam_id}/{output_directory}/%Y%m%dT%H%M%S.%C'
+        output_dir = app_settings.base_dir / field_name
+        filename_pattern = f'{output_dir}/{cam_id}/{sequence_id}/%Y%m%dT%H%M%S.%C'
         print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
         command = [gphoto2, '--port', port, '--filename', filename_pattern, '--capture-tethered']
 
