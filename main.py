@@ -10,6 +10,7 @@ from typing import Optional, List, Dict, Union
 
 import pigpio
 from panoptes.utils.config.client import get_config
+from panoptes.utils.utils import listify
 from pydantic import BaseModel, DirectoryPath, Field, BaseSettings
 
 
@@ -174,7 +175,7 @@ def gphoto(arguments: str = '--auto-detect'):
 
 def release_shutter(pins: Union[List[int], int], exptimes: Union[List[float], float]):
     """Trigger the shutter release for given exposure time."""
-    for exptime in exptimes:
+    for exptime in listify(exptimes):
         print(f'Triggering {pins=} for {exptime=} seconds.')
 
         for pin in pins:
