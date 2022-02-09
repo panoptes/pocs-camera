@@ -94,13 +94,8 @@ def release_shutter(pins: Union[List[int], int], exptimes: Union[List[float], fl
 
 
 @app.task(name='gphoto2.take_observation', bind=True)
-def take_observation(self,
-                     exptime: Union[List[float], float],
-                     field_name: str = '',
-                     num_exposures: int = 1):
+def take_observation(self, exptime: Union[List[float], float], num_exposures: int = 1):
     """Take a sequence of images via GPIO shutter trigger."""
-    print(f'Taking picture for {field_name=} with {exptime=}')
-
     pic_num = 1
     while pic_num <= num_exposures:
         self.update_state(state='OBSERVING',
