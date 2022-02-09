@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Union
 
 import pigpio
-from datetime import datetime as dt
+from datetime import datetime as dt, timedelta
 from anyio import sleep, create_task_group
 from fastapi import FastAPI
 from loguru import logger
@@ -80,21 +80,23 @@ async def take_observation(observation: Observation):
     await sleep(1)
 
     pic_num = 1
+    start_time = dt.utcnow()
     while True:
-        print(f'Taking photo {pic_num:03d} of {observation.num_exposures:03d} at {dt.utcnow()}')
+        print(f'Taking photo {pic_num:03d} of {observation.num_exposures:03d} [{(dt.utcnow() - start_time).seconds}s]')
         async with create_task_group() as tg:
             for pin in app_settings.pins:
                 tg.start_soon(release_shutter, pin, observation.exptime)
 
-        print(f'Done with picture set at {dt.utcnow()}')
-        await sleep(0.5)
+        print(f'Done with picture set [{(dt.utcnow() - start_time).seconds}s]')
         if pic_num == observation.num_exposures:
             print(f'Reached {observation.num_exposures=}, stopping photos')
             break
         else:
             pic_num += 1
+            await sleep(0.5)
 
     await stop_gphoto_tether()
+    print(f'Done with observation [{(dt.utcnow() - start_time).seconds}s]')
 
 
 @app.get('/list-cameras')
