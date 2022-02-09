@@ -27,6 +27,7 @@ class AppSettings(BaseModel):
     pins: List[int] = Field(default_factory=list)
     cameras: Dict = Field(default_factory=dict)
     processes: Dict = Field(default_factory=dict)
+    is_observing: bool = False
 
 
 class Observation(BaseModel):
@@ -75,6 +76,9 @@ async def shutdown_tasks():
 @app.post('/take-observation')
 async def take_observation(observation: Observation):
     """Take a picture by setting GPIO port high"""
+    if app_settings.is_observing:
+        return dict(success=False, message=f'Observation already in progress')
+
     logger.info(f'Taking picture for {observation.field_name=} with {observation.exptime=}')
 
     if observation.use_tether:
@@ -84,13 +88,15 @@ async def take_observation(observation: Observation):
     pic_num = 1
     start_time = dt.utcnow()
     while True:
-        print(
-            f'Taking photo {pic_num:03d} of {observation.num_exposures:03d} [{(dt.utcnow() - start_time).seconds}s]')
+        app_settings.is_observing = True
+        print(f'Taking photo {pic_num:03d} of {observation.num_exposures:03d} '
+              f'[{(dt.utcnow() - start_time).seconds}s]')
         async with create_task_group() as tg:
             for pin in app_settings.pins:
                 tg.start_soon(release_shutter, pin, observation.exptime)
 
-        print(f'Done with picture set [{(dt.utcnow() - start_time).seconds}s]')
+        print(f'Done with photo {pic_num:03d} of {observation.num_exposures:03d} '
+              f'[{(dt.utcnow() - start_time).seconds}s]')
         if pic_num == observation.num_exposures:
             print(f'Reached {observation.num_exposures=}, stopping photos')
             break
@@ -102,6 +108,8 @@ async def take_observation(observation: Observation):
         await stop_gphoto_tether()
 
     print(f'Done with observation [{(dt.utcnow() - start_time).seconds}s]')
+    app_settings.is_observing = False
+    return dict(success=True, message=f'Observation complete')
 
 
 @app.get('/list-cameras')
