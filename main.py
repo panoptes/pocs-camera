@@ -1,6 +1,7 @@
 import re
 import shutil
 import subprocess
+import time
 from datetime import datetime as dt
 from enum import IntEnum
 from pathlib import Path
@@ -74,8 +75,8 @@ def take_observation(observation: Observation):
     print(f'Taking picture for {observation.field_name=} with {observation.exptime=}')
 
     if observation.use_tether:
-        await start_gphoto_tether(observation.sequence_id, observation.field_name)
-        await sleep(1)
+        start_gphoto_tether(observation.sequence_id, observation.field_name)
+        time.sleep(1)
 
     pic_num = 1
     start_time = dt.utcnow()
@@ -97,7 +98,7 @@ def take_observation(observation: Observation):
             await sleep(0.5)
 
     if observation.use_tether:
-        await stop_gphoto_tether()
+        stop_gphoto_tether()
 
     print(f'Done with observation [{(dt.utcnow() - start_time).seconds}s]')
     app_settings.is_observing = False
@@ -186,13 +187,13 @@ async def close_shutter(pin: int):
     gpio.write(pin, State.LOW)
 
 
-async def start_gphoto_tether(sequence_id, field_name):
+def start_gphoto_tether(sequence_id, field_name):
     """Starts a gphoto2 tether and saves images to the given field_name."""
     gphoto2 = shutil.which('gphoto2')
     if not gphoto2:  # pragma: no cover
         raise Exception('gphoto2 is missing, please install or use the endpoint option.')
 
-    cameras = await list_connected_cameras()
+    cameras = list_connected_cameras()
     for cam_id, port in cameras.items():
         output_dir = app_settings.base_dir / field_name
         filename_pattern = f'{output_dir}/{cam_id}/{sequence_id}/%Y%m%dT%H%M%S.%C'
@@ -203,7 +204,7 @@ async def start_gphoto_tether(sequence_id, field_name):
         app_settings.processes[cam_id] = proc
 
 
-async def stop_gphoto_tether():
+def stop_gphoto_tether():
     """Stops all gphoto tether processes."""
     for cam_id, proc in app_settings.processes.items():
         outs = errs = ''
