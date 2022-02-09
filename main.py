@@ -34,6 +34,7 @@ class Observation(BaseModel):
     exptime: Union[List[float], float]
     field_name: str = ''
     num_exposures: int = 1
+    use_tether: bool = False
 
 
 class GphotoCommand(BaseModel):
@@ -76,13 +77,15 @@ async def take_observation(observation: Observation):
     """Take a picture by setting GPIO port high"""
     logger.info(f'Taking picture for {observation.field_name=} with {observation.exptime=}')
 
-    await start_gphoto_tether(observation.sequence_id, observation.field_name)
-    await sleep(1)
+    if observation.use_tether:
+        await start_gphoto_tether(observation.sequence_id, observation.field_name)
+        await sleep(1)
 
     pic_num = 1
     start_time = dt.utcnow()
     while True:
-        print(f'Taking photo {pic_num:03d} of {observation.num_exposures:03d} [{(dt.utcnow() - start_time).seconds}s]')
+        print(
+            f'Taking photo {pic_num:03d} of {observation.num_exposures:03d} [{(dt.utcnow() - start_time).seconds}s]')
         async with create_task_group() as tg:
             for pin in app_settings.pins:
                 tg.start_soon(release_shutter, pin, observation.exptime)
@@ -95,7 +98,9 @@ async def take_observation(observation: Observation):
             pic_num += 1
             await sleep(0.5)
 
-    await stop_gphoto_tether()
+    if observation.use_tether:
+        await stop_gphoto_tether()
+
     print(f'Done with observation [{(dt.utcnow() - start_time).seconds}s]')
 
 
