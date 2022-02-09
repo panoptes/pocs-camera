@@ -29,6 +29,7 @@ class AppSettings(BaseModel):
     cameras: Dict = Field(default_factory=dict)
     processes: Dict = Field(default_factory=dict)
     is_observing: bool = False
+    keep_observing: bool = True
 
     def setup_pins(self):
         """Sets the mode for the GPIO pins"""
@@ -56,35 +57,34 @@ app_settings.setup_pins()
 def take_observation(sequence_id: str,
                      exptime: Union[List[float], float],
                      field_name: str = '',
-                     num_exposures: int = 1,
-                     use_tether: bool = False):
+                     num_exposures: int = 1):
     """Take a picture by setting GPIO port high"""
     if app_settings.is_observing:
         return dict(success=False, message=f'Observation already in progress')
+    else:
+        app_settings.is_observing = True
+        app_settings.keep_observing = True
 
-    print(f'Taking picture for {field_name=} with {exptime=}')
-
-    if use_tether:
-        start_gphoto_tether(sequence_id, field_name)
-        time.sleep(1)
+    cameras = list_connected_cameras()
+    print(f'Taking picture for {field_name=} with {exptime=} on {cameras=}')
 
     pic_num = 1
     start_time = dt.utcnow()
-    while True:
-        app_settings.is_observing = True
-        print(f'Taking photo {pic_num:03d} of {num_exposures:03d} '
-              f'[{(dt.utcnow() - start_time).seconds}s]')
+    while app_settings.keep_observing:
+        delta_t = (dt.utcnow() - start_time).seconds
+        print(f'Starting {pic_num:03d} of {num_exposures:03d} [{delta_t}s]')
 
-        cam_tasks = [app.send_task('camera.release_shutter', args=[pin, exptime])
-                     for pin in app_settings.pins]
+        release_shutter(app_settings.pins, exptime)
 
-        # TODO(wtgee) change this.
-        while all([t.status != 'SUCCESS' for t in cam_tasks]):
-            print(f'Waiting for cameras to be finished with observation')
-            time.sleep(1)
+        delta_t = (dt.utcnow() - start_time).seconds
+        print(f'Done with photo {pic_num:03d} of {num_exposures:03d} [{delta_t}s]')
 
-        print(f'Done with photo {pic_num:03d} of {num_exposures:03d} '
-              f'[{(dt.utcnow() - start_time).seconds}s]')
+        # Start a file download process.
+        for cam_id, port in cameras.items():
+            output_dir = app_settings.base_dir / field_name / cam_id / sequence_id
+            filename_pattern = f'{output_dir}/%Y%m%dT%H%M%S.%C'
+            app.send_task('camera.file_download', args=[port, filename_pattern])
+
         if pic_num == num_exposures:
             print(f'Reached {num_exposures=}, stopping photos')
             break
@@ -92,15 +92,21 @@ def take_observation(sequence_id: str,
             pic_num += 1
             time.sleep(0.5)
 
-    if use_tether:
-        stop_gphoto_tether()
+    app.send_task('camera.file_download', args=[sequence_id, field_name])
 
     print(f'Done with observation [{(dt.utcnow() - start_time).seconds}s]')
     app_settings.is_observing = False
     return dict(success=True, message=f'Observation complete')
 
 
-@app.task(name='list-cameras')
+@app.task(name='camera.stop_observing')
+def stop_observing():
+    """Stops the observing loop. Does not interrupt exposure."""
+    print(f'Interrupting observation. Current exposure will finish')
+    app_settings.keep_observing = False
+
+
+@app.task(name='camera.list')
 def list_connected_cameras() -> dict:
     """Detect connected cameras.
 
@@ -130,7 +136,7 @@ def list_connected_cameras() -> dict:
     return cameras
 
 
-@app.task(name='gphoto')
+@app.task(name='camera.gphoto')
 def gphoto(arguments: str = '--auto-detect'):
     """Perform arbitrary gphoto2 """
     print(f'Received gphoto2 command request')
@@ -166,43 +172,35 @@ def gphoto(arguments: str = '--auto-detect'):
     return command_output
 
 
-@app.task('camera.release_shutter')
-def release_shutter(pin: int, exptime: float):
+def release_shutter(pins: Union[List[int], int], exptimes: Union[List[float], float]):
     """Trigger the shutter release for given exposure time."""
-    print(f'Triggering {pin=} for {exptime=} seconds at {dt.utcnow()}.')
-    gpio.write(pin, State.HIGH)
-    time.sleep(exptime)
-    gpio.write(pin, State.LOW)
+    for exptime in exptimes:
+        print(f'Triggering {pins=} for {exptime=} seconds.')
+
+        for pin in pins:
+            gpio.write(pin, State.HIGH)
+
+        print(f'Sleeping for {exptime=} seconds.')
+        time.sleep(exptime)
+
+        for pin in pins:
+            gpio.write(pin, State.LOW)
+
+        print(f'Done on {pins=} after {exptime=} seconds.')
 
 
-def start_gphoto_tether(sequence_id, field_name):
-    """Starts a gphoto2 tether and saves images to the given field_name."""
+@app.task(name='camera.file_download')
+def gphoto_file_download(port: str, filename_pattern: str, only_new: bool = True,
+                         timeout: float = 300):
+    """Downloads (newer) files from the camera on the given port using the filename pattern.."""
     gphoto2 = shutil.which('gphoto2')
     if not gphoto2:  # pragma: no cover
         raise Exception('gphoto2 is missing, please install or use the endpoint option.')
 
-    cameras = list_connected_cameras()
-    for cam_id, port in cameras.items():
-        output_dir = app_settings.base_dir / field_name
-        filename_pattern = f'{output_dir}/{cam_id}/{sequence_id}/%Y%m%dT%H%M%S.%C'
-        print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
-        command = [gphoto2, '--port', port, '--filename', filename_pattern, '--capture-tethered']
+    print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
+    command = [gphoto2, '--port', port, '--filename', filename_pattern, '--get-all-files']
+    if only_new:
+        command.append('--new')
 
-        proc = subprocess.Popen(command)
-        app_settings.processes[cam_id] = proc
-
-
-def stop_gphoto_tether():
-    """Stops all gphoto tether processes."""
-    for cam_id, proc in app_settings.processes.items():
-        outs = errs = ''
-        try:
-            outs, errs = proc.communicate(timeout=15)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            outs, errs = proc.communicate()
-        finally:
-            if outs and outs > '':
-                print(f'{outs=}')
-            if errs and errs > '':
-                print(f'{errs=}')
+    proc = subprocess.Popen(command)
+    proc.wait(timeout=timeout)
