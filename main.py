@@ -116,7 +116,6 @@ def list_connected_cameras(self) -> dict:
     Returns:
         dict: Camera names and usb ports from gphoto2.
     """
-    self.update_state(state='USING_GPHOTO2')
     result = gphoto2_command('--auto-detect')
 
     cameras = dict()
@@ -137,7 +136,6 @@ def gphoto_file_download(self,
                          filename_pattern: str,
                          only_new: bool = True):
     """Downloads (newer) files from the camera on the given port using the filename pattern."""
-    self.update_state(state='USING_GPHOTO2', meta=dict(port=port))
     print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
     command = ['--filename', filename_pattern, '--get-all-files', '--recurse']
     if only_new:
@@ -149,7 +147,6 @@ def gphoto_file_download(self,
 @app.task(name='gphoto2.delete_files', bind=True)
 def gphoto_file_delete(self, port: str):
     """Removes all files from the camera on the given port."""
-    self.update_state(state='USING_GPHOTO2', meta=dict(port=port))
     print(f'Deleting all files for {port=}')
     gphoto2_command('--delete-all-files --recurse', port=port)
 
