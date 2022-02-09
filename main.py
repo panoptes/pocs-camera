@@ -1,14 +1,15 @@
 import re
 import shutil
 import subprocess
+from datetime import datetime as dt
 from enum import IntEnum
 from pathlib import Path
 from typing import Optional, List, Dict, Union
 
 import pigpio
-from datetime import datetime as dt, timedelta
 from anyio import sleep, create_task_group
-from fastapi import FastAPI
+from celery import Celery
+from panoptes.utils.config.client import get_config
 from pydantic import BaseModel, DirectoryPath, Field, BaseSettings
 
 
@@ -24,6 +25,7 @@ class Settings(BaseSettings):
 class AppSettings(BaseModel):
     base_dir: Optional[DirectoryPath] = Path('images')
     pins: List[int] = Field(default_factory=list)
+    celery: Dict = Field(default_factory=dict),
     cameras: Dict = Field(default_factory=dict)
     processes: Dict = Field(default_factory=dict)
     is_observing: bool = False
@@ -46,34 +48,25 @@ class GphotoCommand(BaseModel):
     returncode: Optional[int]
 
 
-app_settings = AppSettings(pins=Settings().gpio_pins)
-app = FastAPI()
+app_settings = AppSettings(pins=Settings().gpio_pins,
+                           celery=get_config('celery', default=dict(
+                               broker_url='amqp://guest:guest@localhost:5672//',
+                               result_backend='db+sqlite:///results.db',
+                           )))
+app = Celery()
+app.config_from_object(app_settings.celery)
 gpio = pigpio.pi()
 
-
-@app.on_event('startup')
-async def startup_tasks():
-    """Set up the cameras.
-
-    If no settings are specified, this will attempt to associate a GPIO pin
-    with a usb port via gphoto2.
-    """
-    # Get GPIO pins and set OUTPUT mode.
-    for i, pin in enumerate(app_settings.pins):
-        cam_name = f'Cam{i:02d}'
-        print(f'Setting {pin=} as OUTPUT and assigning {cam_name=}')
-        gpio.set_mode(pin, pigpio.OUTPUT)
-        app_settings.cameras[cam_name] = pin
+# Get GPIO pins and set OUTPUT mode.
+for i, pin in enumerate(app_settings.pins):
+    cam_name = f'Cam{i:02d}'
+    print(f'Setting {pin=} as OUTPUT and assigning {cam_name=}')
+    gpio.set_mode(pin, pigpio.OUTPUT)
+    app_settings.cameras[cam_name] = pin
 
 
-@app.on_event('shutdown')
-async def shutdown_tasks():
-    print('Stopping any running gphoto2 tether processes')
-    await stop_gphoto_tether()
-
-
-@app.post('/take-observation')
-async def take_observation(observation: Observation):
+@app.task(name='camera.take_observation')
+def take_observation(observation: Observation):
     """Take a picture by setting GPIO port high"""
     if app_settings.is_observing:
         return dict(success=False, message=f'Observation already in progress')
@@ -111,8 +104,8 @@ async def take_observation(observation: Observation):
     return dict(success=True, message=f'Observation complete')
 
 
-@app.get('/list-cameras')
-async def list_connected_cameras() -> dict:
+@app.task(name='list-cameras')
+def list_connected_cameras() -> dict:
     """Detect connected cameras.
 
     Uses gphoto2 to try and detect which cameras are connected. Cameras should
@@ -141,8 +134,8 @@ async def list_connected_cameras() -> dict:
     return cameras
 
 
-@app.post('/gphoto')
-async def gphoto(command: GphotoCommand):
+@app.task(name='gphoto')
+def gphoto(command: GphotoCommand):
     """Perform arbitrary gphoto2 command."""
     print(f'Received command={command!r}')
 
