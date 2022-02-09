@@ -69,32 +69,32 @@ def take_observation(sequence_id: str,
     cameras = list_connected_cameras()
     print(f'Taking picture for {field_name=} with {exptime=} on {cameras=}')
 
+    # Setup output dirs.
+    output_dirs = dict()
+    for cam_id, port in cameras.items():
+        output_dir = app_settings.base_dir / field_name / cam_id / sequence_id
+        output_dirs[cam_id] = str(output_dir)
+
     pic_num = 1
     start_time = dt.utcnow()
     while app_settings.keep_observing:
-        delta_t = (dt.utcnow() - start_time).seconds
-        print(f'Starting {pic_num:03d} of {num_exposures:03d} [{delta_t}s]')
-
+        print(f'Starting {pic_num:03d} of {num_exposures:03d}')
         release_shutter(app_settings.pins, exptime)
+        print(f'Done with photo {pic_num:03d} of {num_exposures:03d}')
 
-        delta_t = (dt.utcnow() - start_time).seconds
-        print(f'Done with photo {pic_num:03d} of {num_exposures:03d} [{delta_t}s]')
-
-        # Start a file download process.
-        output_dirs = list()
+        # Start a file download process for each camera in the background.
         for cam_id, port in cameras.items():
-            output_dir = app_settings.base_dir / field_name / cam_id / sequence_id
-            filename_pattern = f'{output_dir}/%Y%m%dT%H%M%S.%C'
+            filename_pattern = f'{output_dirs[cam_id]}/%Y%m%dT%H%M%S.%C'
             app.send_task('camera.file_download', args=[port, filename_pattern])
-            output_dirs.append(output_dir)
 
+        time.sleep(0.25)  # Small pause
         if pic_num == num_exposures:
             print(f'Reached {num_exposures=}, stopping photos')
             break
         else:
             pic_num += 1
-            time.sleep(0.5)
 
+    # Do a final download
     app.send_task('camera.file_download', args=[sequence_id, field_name])
 
     print(f'Done with observation [{(dt.utcnow() - start_time).seconds}s]')
