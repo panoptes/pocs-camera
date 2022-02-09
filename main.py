@@ -136,7 +136,7 @@ def list_connected_cameras(self) -> dict:
             cam_id = completed_proc.stdout.decode().split('\n')[3].split(' ')[-1][-6:]
             cameras[cam_id] = port
 
-    self.update_state(meta=dict(gphoto2=gphoto2))
+    self.update_state(state='GPHOTO_COMPLETE', meta=dict(gphoto2=gphoto2))
     return cameras
 
 
