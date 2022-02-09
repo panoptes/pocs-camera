@@ -1,3 +1,4 @@
+from celery import Celery
 import re
 import shutil
 import subprocess
@@ -8,8 +9,6 @@ from pathlib import Path
 from typing import Optional, List, Dict, Union
 
 import pigpio
-from anyio import sleep, create_task_group
-from celery import Celery
 from panoptes.utils.config.client import get_config
 from pydantic import BaseModel, DirectoryPath, Field, BaseSettings
 
@@ -31,73 +30,69 @@ class AppSettings(BaseModel):
     processes: Dict = Field(default_factory=dict)
     is_observing: bool = False
 
-
-class Observation(BaseModel):
-    sequence_id: str
-    exptime: Union[List[float], float]
-    field_name: str = ''
-    num_exposures: int = 1
-    use_tether: bool = False
-
-
-class GphotoCommand(BaseModel):
-    """Accepts an arbitrary command string which is passed to gphoto2."""
-    arguments: str = '--auto-detect'
-    success: bool = False
-    output: Optional[str]
-    error: Optional[str]
-    returncode: Optional[int]
+    def setup_pins(self):
+        """Sets the mode for the GPIO pins"""
+        # Get GPIO pins and set OUTPUT mode.
+        for i, pin in enumerate(self.pins):
+            cam_name = f'Cam{i:02d}'
+            print(f'Setting {pin=} as OUTPUT and assigning {cam_name=}')
+            gpio.set_mode(pin, pigpio.OUTPUT)
+            self.cameras[cam_name] = pin
 
 
-app_settings = AppSettings(pins=Settings().gpio_pins,
-                           celery=get_config('celery', default=dict(
-                               broker_url='amqp://guest:guest@localhost:5672//',
-                               result_backend='db+sqlite:///results.db',
-                           )))
+# Get overall settings.
+app_settings = AppSettings(pins=Settings().gpio_pins, celery=get_config('celery', default=dict()))
+
+# Start celery.
 app = Celery()
 app.config_from_object(app_settings.celery)
-gpio = pigpio.pi()
 
-# Get GPIO pins and set OUTPUT mode.
-for i, pin in enumerate(app_settings.pins):
-    cam_name = f'Cam{i:02d}'
-    print(f'Setting {pin=} as OUTPUT and assigning {cam_name=}')
-    gpio.set_mode(pin, pigpio.OUTPUT)
-    app_settings.cameras[cam_name] = pin
+# Setup GPIO pins.
+gpio = pigpio.pi()
+app_settings.setup_pins()
 
 
 @app.task(name='camera.take_observation')
-def take_observation(observation: Observation):
+def take_observation(sequence_id: str,
+                     exptime: Union[List[float], float],
+                     field_name: str = '',
+                     num_exposures: int = 1,
+                     use_tether: bool = False):
     """Take a picture by setting GPIO port high"""
     if app_settings.is_observing:
         return dict(success=False, message=f'Observation already in progress')
 
-    print(f'Taking picture for {observation.field_name=} with {observation.exptime=}')
+    print(f'Taking picture for {field_name=} with {exptime=}')
 
-    if observation.use_tether:
-        start_gphoto_tether(observation.sequence_id, observation.field_name)
+    if use_tether:
+        start_gphoto_tether(sequence_id, field_name)
         time.sleep(1)
 
     pic_num = 1
     start_time = dt.utcnow()
     while True:
         app_settings.is_observing = True
-        print(f'Taking photo {pic_num:03d} of {observation.num_exposures:03d} '
+        print(f'Taking photo {pic_num:03d} of {num_exposures:03d} '
               f'[{(dt.utcnow() - start_time).seconds}s]')
-        async with create_task_group() as tg:
-            for pin in app_settings.pins:
-                tg.start_soon(release_shutter, pin, observation.exptime)
 
-        print(f'Done with photo {pic_num:03d} of {observation.num_exposures:03d} '
+        cam_tasks = [app.send_task('camera.release_shutter', args=[pin, exptime])
+                     for pin in app_settings.pins]
+
+        # TODO(wtgee) change this.
+        while all([t.status != 'SUCCESS' for t in cam_tasks]):
+            print(f'Waiting for cameras to be finished with observation')
+            time.sleep(1)
+
+        print(f'Done with photo {pic_num:03d} of {num_exposures:03d} '
               f'[{(dt.utcnow() - start_time).seconds}s]')
-        if pic_num == observation.num_exposures:
-            print(f'Reached {observation.num_exposures=}, stopping photos')
+        if pic_num == num_exposures:
+            print(f'Reached {num_exposures=}, stopping photos')
             break
         else:
             pic_num += 1
-            await sleep(0.5)
+            time.sleep(0.5)
 
-    if observation.use_tether:
+    if use_tether:
         stop_gphoto_tether()
 
     print(f'Done with observation [{(dt.utcnow() - start_time).seconds}s]')
@@ -136,12 +131,12 @@ def list_connected_cameras() -> dict:
 
 
 @app.task(name='gphoto')
-def gphoto(command: GphotoCommand):
-    """Perform arbitrary gphoto2 command."""
-    print(f'Received command={command!r}')
+def gphoto(arguments: str = '--auto-detect'):
+    """Perform arbitrary gphoto2 """
+    print(f'Received gphoto2 command request')
 
     # Fix the filename.
-    filename_match = re.search(r'--filename (.*.cr2)', command.arguments)
+    filename_match = re.search(r'--filename (.*.cr2)', arguments)
     if filename_match:
         filename_path = Path(filename_match.group(1))
 
@@ -150,40 +145,33 @@ def gphoto(command: GphotoCommand):
             app_filename = app_settings.base_dir / filename_path
             filename_in_args = f'--filename {str(filename_path)}'
             print(f'Replacing {filename_path} with {app_filename}.')
-            command.arguments = command.arguments.replace(filename_in_args,
-                                                          f'--filename {app_filename}')
+            arguments = arguments.replace(filename_in_args,
+                                          f'--filename {app_filename}')
 
-    # Build the full command.
-    full_command = [shutil.which('gphoto2'), *command.arguments.split(' ')]
+    # Build the full
+    full_command = [shutil.which('gphoto2'), *arguments.split(' ')]
 
     print(f'Running {full_command!r}')
     completed_proc = subprocess.run(full_command, capture_output=True)
 
     # Populate return items.
-    command.success = completed_proc.returncode >= 0
-    command.returncode = completed_proc.returncode
-    command.output = completed_proc.stdout
-    command.error = completed_proc.stderr
+    command_output = dict(
+        success=completed_proc.returncode >= 0,
+        returncode=completed_proc.returncode,
+        output=completed_proc.stdout,
+        error=completed_proc.stderr
+    )
 
-    print(f'Returning {command!r}')
-    return command
+    print(f'Returning {command_output!r}')
+    return command_output
 
 
-async def release_shutter(pin: int, exptime: float):
+@app.task('camera.release_shutter')
+def release_shutter(pin: int, exptime: float):
     """Trigger the shutter release for given exposure time."""
     print(f'Triggering {pin=} for {exptime=} seconds at {dt.utcnow()}.')
-    await open_shutter(pin)
-    await sleep(exptime)
-    await close_shutter(pin)
-
-
-async def open_shutter(pin: int):
-    """Opens the shutter for the camera."""
     gpio.write(pin, State.HIGH)
-
-
-async def close_shutter(pin: int):
-    """Closes the shutter for the camera."""
+    time.sleep(exptime)
     gpio.write(pin, State.LOW)
 
 
