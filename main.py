@@ -1,3 +1,4 @@
+from contextlib import suppress
 from functools import wraps
 
 from celery import Celery
@@ -52,6 +53,28 @@ app.config_from_object(app_settings.celery)
 gpio = pigpio.pi()
 app_settings.setup_pins()
 
+camera_match_re = re.compile(r'([\w\d\s_.]{30})\s(usb:\d{3},\d{3})')
+
+
+def lock_gphoto2(callback, *decorator_args, **decorator_kwargs):
+    """ Decorator to ensure only one instance of the task is running at once. """
+
+    @wraps(callback)
+    def _wrapper(task, *args, **kwargs):
+        if task.name.startswith('gphoto2.'):
+            for queue in task.app.control.inspect().active():
+                for running_task in queue:
+                    if running_task['name'].startswith('gphoto2.'):
+                        with suppress(IndexError):
+                            same_port = running_task['args'][0] == task.args[0]
+                            different_tasks = task.request.id != running_task['id']
+                            if same_port and different_tasks:
+                                return f'Another gphoto2 task is already in progress'
+
+        return callback(task, *args, **kwargs)
+
+    return _wrapper
+
 
 def release_shutter(pins: Union[List[int], int], exptimes: Union[List[float], float]):
     """Trigger the shutter release for given exposure time via the GPIO pins."""
@@ -70,7 +93,7 @@ def release_shutter(pins: Union[List[int], int], exptimes: Union[List[float], fl
         print(f'Done on {pins=} after {exptime=} seconds.')
 
 
-@app.task(name='camera.take_observation', bind=True)
+@app.task(name='gphoto2.take_observation', bind=True)
 def take_observation(self,
                      exptime: Union[List[float], float],
                      field_name: str = '',
@@ -88,7 +111,7 @@ def take_observation(self,
         pic_num += 1
 
 
-@app.task(name='camera.list', bind=True)
+@app.task(name='gphoto2.list', bind=True)
 def list_connected_cameras(self) -> dict:
     """Detect connected cameras.
 
@@ -98,75 +121,64 @@ def list_connected_cameras(self) -> dict:
     Returns:
         dict: Camera names and usb ports from gphoto2.
     """
-    result = app.send_task('gphoto2.command', args=['--auto-detect']).get().split('\n')
+    self.update_state(state='USING_GPHOTO2')
+    result = gphoto2_command('--auto-detect')
 
     cameras = dict()
-    for line in result:
-        camera_match = re.match(r'([\w\d\s_.]{30})\s(usb:\d{3},\d{3})', line)
+    for line in result['output']:
+        camera_match = camera_match_re.match(line)
         if camera_match:
             port = camera_match.group(2).strip()
-            cmd = '--get-config serialnumber'
-            result = app.send_task('gphoto2.command', args=[port, cmd]).get().split('\n')
-            cam_id = result[3].split(' ')[-1][-6:]
+            result = gphoto2_command('--get-config serialnumber', port=port)
+            cam_id = result['output'][3].split(' ')[-1][-6:]
             cameras[cam_id] = port
 
     return cameras
 
 
-@app.task(name='camera.file_download', bind=True)
+@app.task(name='gphoto2.file_download', bind=True)
 def gphoto_file_download(self,
                          port: str,
                          filename_pattern: str,
                          only_new: bool = True):
     """Downloads (newer) files from the camera on the given port using the filename pattern."""
+    self.update_state(state='USING_GPHOTO2', meta=dict(port=port))
     print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
     command = ['--filename', filename_pattern, '--get-all-files', '--recurse']
     if only_new:
         command.append('--new')
 
-    app.send_task('gphoto2.command', args=[port, command], ignore_result=True)
+    gphoto2_command(command, port=port)
 
 
-@app.task(name='camera.delete_files', bind=True)
+@app.task(name='gphoto2.delete_files', bind=True)
 def gphoto_file_delete(self, port: str):
     """Removes all files from the camera on the given port."""
+    self.update_state(state='USING_GPHOTO2', meta=dict(port=port))
     print(f'Deleting all files for {port=}')
-    command = ['--delete-all-files', '--recurse']
-    app.send_task('gphoto2.command', args=[port, command], ignore_result=True)
+    gphoto2_command('--delete-all-files --recurse', port=port)
 
 
-def lock_gphoto2(callback, *decorator_args, **decorator_kwargs):
-    """ Decorator to ensure only one instance of the task is running at once. """
-
-    @wraps(callback)
-    def _wrapper(task, *args, **kwargs):
-        if task.name.startswith('gphoto2.'):
-            for queue in task.app.control.inspect().active():
-                for running_task in queue:
-                    if running_task['name'].startswith('gphoto2.'):
-                        same_port = running_task['args'][0] == task.args[0]
-                        if same_port and task.request.id != running_task['id']:
-                            return f'Another gphoto2 task is already in progress'
-
-        return callback(task, *args, **kwargs)
-
-    return _wrapper
-
-
-@app.task(name='gphoto2.command', bind=True)
-@lock_gphoto2
-def gphoto2_command(self, port: str, command: str, timeout: float = 300):
+def gphoto2_command(command: Union[List[str], str], port: Optional[str] = None,
+                    timeout: float = 300):
     """Perform a gphoto2 command."""
-    gphoto2 = shutil.which('gphoto2')
-    command = f'{gphoto2} --port {port} {command}'
-    completed_proc = subprocess.run(command, capture_output=True, timeout=timeout)
+    full_command = [shutil.which('gphoto2')]
+
+    if port is not None:
+        full_command.append('--port')
+        full_command.append(port)
+
+    full_command.extend(command.split(' '))
+    print(f'Running gphoto2 {full_command=}')
+
+    completed_proc = subprocess.run(full_command, capture_output=True, timeout=timeout)
 
     # Populate return items.
     command_output = dict(
         success=completed_proc.returncode >= 0,
         returncode=completed_proc.returncode,
-        output=completed_proc.stdout,
-        error=completed_proc.stderr
+        output=completed_proc.stdout.decode('utf-8').split('\n'),
+        error=completed_proc.stderr.decode('utf-8').split(('\n'))
     )
 
     return command_output
