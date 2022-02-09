@@ -1,9 +1,10 @@
+from functools import wraps
+
 from celery import Celery
 import re
 import shutil
 import subprocess
 import time
-from datetime import datetime as dt
 from enum import IntEnum
 from pathlib import Path
 from typing import Optional, List, Dict, Union
@@ -29,8 +30,6 @@ class AppSettings(BaseModel):
     celery: Dict = Field(default_factory=dict),
     cameras: Dict = Field(default_factory=dict)
     processes: Dict = Field(default_factory=dict)
-    is_observing: bool = False
-    keep_observing: bool = True
 
     def setup_pins(self):
         """Sets the mode for the GPIO pins"""
@@ -54,59 +53,39 @@ gpio = pigpio.pi()
 app_settings.setup_pins()
 
 
-@app.task(name='camera.take_observation')
-def take_observation(sequence_id: str,
+def release_shutter(pins: Union[List[int], int], exptimes: Union[List[float], float]):
+    """Trigger the shutter release for given exposure time via the GPIO pins."""
+    for exptime in listify(exptimes):
+        print(f'Triggering {pins=} for {exptime=} seconds.')
+
+        for pin in pins:
+            gpio.write(pin, State.HIGH)
+
+        print(f'Sleeping for {exptime=} seconds.')
+        time.sleep(exptime)
+
+        for pin in pins:
+            gpio.write(pin, State.LOW)
+
+        print(f'Done on {pins=} after {exptime=} seconds.')
+
+
+@app.task(name='camera.take_observation', bind=True)
+def take_observation(self,
                      exptime: Union[List[float], float],
                      field_name: str = '',
                      num_exposures: int = 1):
-    """Take a picture by setting GPIO port high"""
-    if app_settings.is_observing:
-        return dict(success=False, message=f'Observation already in progress')
-    else:
-        app_settings.is_observing = True
-        app_settings.keep_observing = True
-
-    cameras = list_connected_cameras()
-    print(f'Taking picture for {field_name=} with {exptime=} on {cameras=}')
-
-    # Setup output dirs.
-    output_dirs = dict()
-    for cam_id, port in cameras.items():
-        output_dir = app_settings.base_dir / field_name / cam_id / sequence_id
-        output_dirs[cam_id] = str(output_dir)
+    """Take a sequence of images via GPIO shutter trigger."""
+    print(f'Taking picture for {field_name=} with {exptime=}')
 
     pic_num = 1
-    start_time = dt.utcnow()
-    while app_settings.keep_observing:
-        print(f'Starting {pic_num:03d} of {num_exposures:03d}')
+    while pic_num <= num_exposures:
+        self.update_state(state='OBSERVING',
+                          meta=dict(current=pic_num, num_exposures=num_exposures))
         release_shutter(app_settings.pins, exptime)
-        print(f'Done with photo {pic_num:03d} of {num_exposures:03d}')
 
-        # Start a file download process for each camera in the background.
-        for cam_id, port in cameras.items():
-            filename_pattern = f'{output_dirs[cam_id]}/%Y%m%dT%H%M%S.%C'
-            app.send_task('camera.file_download', args=[port, filename_pattern])
-
-        time.sleep(0.25)  # Small pause
-        if pic_num == num_exposures:
-            print(f'Reached {num_exposures=}, stopping photos')
-            break
-        else:
-            pic_num += 1
-
-    # Do a final download
-    app.send_task('camera.file_download', args=[sequence_id, field_name])
-
-    print(f'Done with observation [{(dt.utcnow() - start_time).seconds}s]')
-    app_settings.is_observing = False
-    return dict(success=True, message=f'Observation complete', result=dict(output=output_dirs))
-
-
-@app.task(name='camera.stop_observing')
-def stop_observing():
-    """Stops the observing loop. Does not interrupt exposure."""
-    print(f'Interrupting observation. Current exposure will finish')
-    app_settings.keep_observing = False
+        time.sleep(0.1)  # Small pause
+        pic_num += 1
 
 
 @app.task(name='camera.list', bind=True)
@@ -121,27 +100,25 @@ def list_connected_cameras(self) -> dict:
     """
     gphoto2 = shutil.which('gphoto2')
     if not gphoto2:  # pragma: no cover
-        raise Exception('gphoto2 is missing, please install or use the endpoint option.')
+        raise Exception('gphoto2 is missing, please install.')
     command = [gphoto2, '--auto-detect']
-    result = subprocess.check_output(command).decode('utf-8')
-    lines = result.split('\n')
+    lines = app.send_task('gphoto2.command', args=[command]).get().split('\n')
 
     cameras = dict()
     for line in lines:
         camera_match = re.match(r'([\w\d\s_.]{30})\s(usb:\d{3},\d{3})', line)
         if camera_match:
             port = camera_match.group(2).strip()
-            get_port_command = [gphoto2, '--port', port, '--get-config', 'serialnumber']
-            completed_proc = subprocess.run(get_port_command, capture_output=True)
-            cam_id = completed_proc.stdout.decode().split('\n')[3].split(' ')[-1][-6:]
+            get_serial_cmd = [gphoto2, '--port', port, '--get-config', 'serialnumber']
+            result = app.send_task('gphoto2.command', args=[get_serial_cmd]).get().split('\n')
+            cam_id = result[3].split(' ')[-1][-6:]
             cameras[cam_id] = port
 
-    self.update_state(state='GPHOTO_COMPLETE', meta=dict(gphoto2=gphoto2))
     return cameras
 
 
-@app.task(name='camera.gphoto')
-def gphoto(arguments: str = '--auto-detect'):
+@app.task(name='camera.command')
+def gphoto_command(arguments: str = '--auto-detect', timeout: float = 300):
     """Perform arbitrary gphoto2 """
     print(f'Received gphoto2 command request')
 
@@ -162,7 +139,69 @@ def gphoto(arguments: str = '--auto-detect'):
     full_command = [shutil.which('gphoto2'), *arguments.split(' ')]
 
     print(f'Running {full_command!r}')
-    completed_proc = subprocess.run(full_command, capture_output=True)
+    task = app.send_task('gphoto2.command', args=[full_command])
+    command_output = task.get(timeout=timeout)
+
+    print(f'Returning {command_output!r}')
+    return command_output
+
+
+@app.task(name='camera.file_download', bind=True)
+def gphoto_file_download(self,
+                         port: str,
+                         filename_pattern: str,
+                         only_new: bool = True,
+                         timeout: float = 300):
+    """Downloads (newer) files from the camera on the given port using the filename pattern."""
+    print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
+    command = [
+        shutil.which('gphoto2'),
+        '--port', port,
+        '--filename', filename_pattern,
+        '--get-all-files',
+        '--recurse'
+    ]
+    if only_new:
+        command.append('--new')
+
+    app.send_task('gphoto2.command', args=[command], ignore_result=True)
+
+
+@app.task(name='camera.delete_files', bind=True)
+def gphoto_file_delete(self, port: str):
+    """Removes all files from the camera on the given port."""
+    print(f'Deleting all files for {port=}')
+    command = [
+        shutil.which('gphoto2'),
+        '--port', port,
+        '--delete-all-files',
+        '--recurse'
+    ]
+    app.send_task('gphoto2.command', args=[command], ignore_result=True)
+
+
+def lock_gphoto2(callback, *decorator_args, **decorator_kwargs):
+    """ Decorator to ensure only one instance of the task is running at once. """
+
+    @wraps(callback)
+    def _wrapper(task, *args, **kwargs):
+        if task.name.startswith('gphoto2.'):
+            for queue in task.app.control.inspect().active():
+                for running_task in queue:
+                    if running_task['name'].startswith('gphoto2.'):
+                        if task.request.id != running_task['id']:
+                            return f'Another gphoto2 task is already in progress'
+
+        return callback(task, *args, **kwargs)
+
+    return _wrapper
+
+
+@app.task(name='gphoto2.command', bind=True)
+@lock_gphoto2
+def gphoto2_command(self, command: str, timeout: float = 300):
+    """Perform a gphoto2 command."""
+    completed_proc = subprocess.run(command, capture_output=True, timeout=timeout)
 
     # Populate return items.
     command_output = dict(
@@ -172,39 +211,4 @@ def gphoto(arguments: str = '--auto-detect'):
         error=completed_proc.stderr
     )
 
-    print(f'Returning {command_output!r}')
     return command_output
-
-
-def release_shutter(pins: Union[List[int], int], exptimes: Union[List[float], float]):
-    """Trigger the shutter release for given exposure time."""
-    for exptime in listify(exptimes):
-        print(f'Triggering {pins=} for {exptime=} seconds.')
-
-        for pin in pins:
-            gpio.write(pin, State.HIGH)
-
-        print(f'Sleeping for {exptime=} seconds.')
-        time.sleep(exptime)
-
-        for pin in pins:
-            gpio.write(pin, State.LOW)
-
-        print(f'Done on {pins=} after {exptime=} seconds.')
-
-
-@app.task(name='camera.file_download')
-def gphoto_file_download(port: str, filename_pattern: str, only_new: bool = True,
-                         timeout: float = 300):
-    """Downloads (newer) files from the camera on the given port using the filename pattern.."""
-    gphoto2 = shutil.which('gphoto2')
-    if not gphoto2:  # pragma: no cover
-        raise Exception('gphoto2 is missing, please install or use the endpoint option.')
-
-    print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
-    command = [gphoto2, '--port', port, '--filename', filename_pattern, '--get-all-files']
-    if only_new:
-        command.append('--new')
-
-    proc = subprocess.Popen(command)
-    proc.wait(timeout=timeout)
