@@ -81,10 +81,12 @@ def take_observation(sequence_id: str,
         print(f'Done with photo {pic_num:03d} of {num_exposures:03d} [{delta_t}s]')
 
         # Start a file download process.
+        output_dirs = list()
         for cam_id, port in cameras.items():
             output_dir = app_settings.base_dir / field_name / cam_id / sequence_id
             filename_pattern = f'{output_dir}/%Y%m%dT%H%M%S.%C'
             app.send_task('camera.file_download', args=[port, filename_pattern])
+            output_dirs.append(output_dir)
 
         if pic_num == num_exposures:
             print(f'Reached {num_exposures=}, stopping photos')
@@ -97,7 +99,7 @@ def take_observation(sequence_id: str,
 
     print(f'Done with observation [{(dt.utcnow() - start_time).seconds}s]')
     app_settings.is_observing = False
-    return dict(success=True, message=f'Observation complete')
+    return dict(success=True, message=f'Observation complete', result=dict(output=output_dirs))
 
 
 @app.task(name='camera.stop_observing')
