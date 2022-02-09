@@ -163,7 +163,11 @@ def gphoto2_command(command: Union[List[str], str], port: Optional[str] = None,
         full_command.append('--port')
         full_command.append(port)
 
-    full_command.extend(command.split(' '))
+    # Turn command into a list if not one already.
+    with suppress(AttributeError):
+        command = command.split(' ')
+
+    full_command.extend(command)
     print(f'Running gphoto2 {full_command=}')
 
     completed_proc = subprocess.run(full_command, capture_output=True, timeout=timeout)
