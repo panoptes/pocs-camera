@@ -109,8 +109,8 @@ def stop_observing():
     app_settings.keep_observing = False
 
 
-@app.task(name='camera.list')
-def list_connected_cameras() -> dict:
+@app.task(name='camera.list', bind=True)
+def list_connected_cameras(self) -> dict:
     """Detect connected cameras.
 
     Uses gphoto2 to try and detect which cameras are connected. Cameras should
@@ -136,6 +136,7 @@ def list_connected_cameras() -> dict:
             cam_id = completed_proc.stdout.decode().split('\n')[3].split(' ')[-1][-6:]
             cameras[cam_id] = port
 
+    self.update_state(meta=dict(gphoto2=gphoto2))
     return cameras
 
 
