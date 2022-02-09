@@ -98,86 +98,41 @@ def list_connected_cameras(self) -> dict:
     Returns:
         dict: Camera names and usb ports from gphoto2.
     """
-    gphoto2 = shutil.which('gphoto2')
-    if not gphoto2:  # pragma: no cover
-        raise Exception('gphoto2 is missing, please install.')
-    command = [gphoto2, '--auto-detect']
-    lines = app.send_task('gphoto2.command', args=[command]).get().split('\n')
+    result = app.send_task('gphoto2.command', args=['--auto-detect']).get().split('\n')
 
     cameras = dict()
-    for line in lines:
+    for line in result:
         camera_match = re.match(r'([\w\d\s_.]{30})\s(usb:\d{3},\d{3})', line)
         if camera_match:
             port = camera_match.group(2).strip()
-            get_serial_cmd = [gphoto2, '--port', port, '--get-config', 'serialnumber']
-            result = app.send_task('gphoto2.command', args=[get_serial_cmd]).get().split('\n')
+            cmd = '--get-config serialnumber'
+            result = app.send_task('gphoto2.command', args=[port, cmd]).get().split('\n')
             cam_id = result[3].split(' ')[-1][-6:]
             cameras[cam_id] = port
 
     return cameras
 
 
-@app.task(name='camera.command')
-def gphoto_command(arguments: str = '--auto-detect', timeout: float = 300):
-    """Perform arbitrary gphoto2 """
-    print(f'Received gphoto2 command request')
-
-    # Fix the filename.
-    filename_match = re.search(r'--filename (.*.cr2)', arguments)
-    if filename_match:
-        filename_path = Path(filename_match.group(1))
-
-        # If the application has a base directory, save there with same filename.
-        if app_settings.base_dir is not None:
-            app_filename = app_settings.base_dir / filename_path
-            filename_in_args = f'--filename {str(filename_path)}'
-            print(f'Replacing {filename_path} with {app_filename}.')
-            arguments = arguments.replace(filename_in_args,
-                                          f'--filename {app_filename}')
-
-    # Build the full
-    full_command = [shutil.which('gphoto2'), *arguments.split(' ')]
-
-    print(f'Running {full_command!r}')
-    task = app.send_task('gphoto2.command', args=[full_command])
-    command_output = task.get(timeout=timeout)
-
-    print(f'Returning {command_output!r}')
-    return command_output
-
-
 @app.task(name='camera.file_download', bind=True)
 def gphoto_file_download(self,
                          port: str,
                          filename_pattern: str,
-                         only_new: bool = True,
-                         timeout: float = 300):
+                         only_new: bool = True):
     """Downloads (newer) files from the camera on the given port using the filename pattern."""
     print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
-    command = [
-        shutil.which('gphoto2'),
-        '--port', port,
-        '--filename', filename_pattern,
-        '--get-all-files',
-        '--recurse'
-    ]
+    command = ['--filename', filename_pattern, '--get-all-files', '--recurse']
     if only_new:
         command.append('--new')
 
-    app.send_task('gphoto2.command', args=[command], ignore_result=True)
+    app.send_task('gphoto2.command', args=[port, command], ignore_result=True)
 
 
 @app.task(name='camera.delete_files', bind=True)
 def gphoto_file_delete(self, port: str):
     """Removes all files from the camera on the given port."""
     print(f'Deleting all files for {port=}')
-    command = [
-        shutil.which('gphoto2'),
-        '--port', port,
-        '--delete-all-files',
-        '--recurse'
-    ]
-    app.send_task('gphoto2.command', args=[command], ignore_result=True)
+    command = ['--delete-all-files', '--recurse']
+    app.send_task('gphoto2.command', args=[port, command], ignore_result=True)
 
 
 def lock_gphoto2(callback, *decorator_args, **decorator_kwargs):
@@ -189,7 +144,8 @@ def lock_gphoto2(callback, *decorator_args, **decorator_kwargs):
             for queue in task.app.control.inspect().active():
                 for running_task in queue:
                     if running_task['name'].startswith('gphoto2.'):
-                        if task.request.id != running_task['id']:
+                        same_port = running_task['args'][0] == task.args[0]
+                        if same_port and task.request.id != running_task['id']:
                             return f'Another gphoto2 task is already in progress'
 
         return callback(task, *args, **kwargs)
@@ -199,8 +155,10 @@ def lock_gphoto2(callback, *decorator_args, **decorator_kwargs):
 
 @app.task(name='gphoto2.command', bind=True)
 @lock_gphoto2
-def gphoto2_command(self, command: str, timeout: float = 300):
+def gphoto2_command(self, port: str, command: str, timeout: float = 300):
     """Perform a gphoto2 command."""
+    gphoto2 = shutil.which('gphoto2')
+    command = f'{gphoto2} --port {port} {command}'
     completed_proc = subprocess.run(command, capture_output=True, timeout=timeout)
 
     # Populate return items.
