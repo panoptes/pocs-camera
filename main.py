@@ -9,7 +9,6 @@ import pigpio
 from datetime import datetime as dt, timedelta
 from anyio import sleep, create_task_group
 from fastapi import FastAPI
-from loguru import logger
 from pydantic import BaseModel, DirectoryPath, Field, BaseSettings
 
 
@@ -79,7 +78,7 @@ async def take_observation(observation: Observation):
     if app_settings.is_observing:
         return dict(success=False, message=f'Observation already in progress')
 
-    logger.info(f'Taking picture for {observation.field_name=} with {observation.exptime=}')
+    print(f'Taking picture for {observation.field_name=} with {observation.exptime=}')
 
     if observation.use_tether:
         await start_gphoto_tether(observation.sequence_id, observation.field_name)
@@ -145,7 +144,7 @@ async def list_connected_cameras() -> dict:
 @app.post('/gphoto')
 async def gphoto(command: GphotoCommand):
     """Perform arbitrary gphoto2 command."""
-    logger.info(f'Received command={command!r}')
+    print(f'Received command={command!r}')
 
     # Fix the filename.
     filename_match = re.search(r'--filename (.*.cr2)', command.arguments)
@@ -156,14 +155,14 @@ async def gphoto(command: GphotoCommand):
         if app_settings.base_dir is not None:
             app_filename = app_settings.base_dir / filename_path
             filename_in_args = f'--filename {str(filename_path)}'
-            logger.debug(f'Replacing {filename_path} with {app_filename}.')
+            print(f'Replacing {filename_path} with {app_filename}.')
             command.arguments = command.arguments.replace(filename_in_args,
                                                           f'--filename {app_filename}')
 
     # Build the full command.
     full_command = [shutil.which('gphoto2'), *command.arguments.split(' ')]
 
-    logger.debug(f'Running {full_command!r}')
+    print(f'Running {full_command!r}')
     completed_proc = subprocess.run(full_command, capture_output=True)
 
     # Populate return items.
@@ -172,7 +171,7 @@ async def gphoto(command: GphotoCommand):
     command.output = completed_proc.stdout
     command.error = completed_proc.stderr
 
-    logger.info(f'Returning {command!r}')
+    print(f'Returning {command!r}')
     return command
 
 
