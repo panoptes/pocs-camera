@@ -92,7 +92,7 @@ def release_shutter(pins: Union[List[int], int], exptimes: Union[List[float], fl
 
 @app.task(name='camera.take_observation', bind=True)
 def take_observation(self, exptime: Union[List[float], float], num_exposures: int = 1,
-                     sleep_interval: float = 0.5):
+                     readout_time: float = 0.25):
     """Take a sequence of images via GPIO shutter trigger."""
     pic_num = 1
     while pic_num <= num_exposures:
@@ -102,7 +102,7 @@ def take_observation(self, exptime: Union[List[float], float], num_exposures: in
         release_shutter(app_settings.pins, exptime)
         print(f'Done with {pic_num}/{num_exposures} after {exptime=}s.')
 
-        time.sleep(sleep_interval)
+        time.sleep(readout_time)
         pic_num += 1
 
 
