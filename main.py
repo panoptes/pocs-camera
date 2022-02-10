@@ -145,8 +145,10 @@ def gphoto_file_download(self,
     results = gphoto2_command(command, port=port)
     filenames = list()
     for line in results['output']:
+        print(f'Looking for filename in {line}')
         file_match = file_save_re.match(line)
         if file_match:
+            print(f'Found match {file_match.group(1)}')
             filenames.append(file_match.group(1).strip())
 
     return filenames
