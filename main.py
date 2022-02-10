@@ -168,6 +168,13 @@ def gphoto_file_delete(self, port: str):
     gphoto2_command('--delete-all-files --recurse', port=port)
 
 
+@app.task(name='gphoto2.command', bind=True)
+def gphoto_command(self, command: Union[List[str], str], port: Optional[str] = None):
+    """Perform arbitrary gphoto2 command.."""
+    print(f'Calling {command=} on {port=}')
+    return gphoto2_command(command, port=port)
+
+
 def gphoto2_command(command: Union[List[str], str], port: Optional[str] = None,
                     timeout: float = 300) -> dict:
     """Perform a gphoto2 command."""
