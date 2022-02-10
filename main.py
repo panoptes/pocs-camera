@@ -12,7 +12,7 @@ from typing import Optional, List, Dict, Union
 
 import pigpio
 from panoptes.utils.utils import listify
-from pydantic import BaseModel, DirectoryPath, Field, BaseSettings, AmqpDsn, Config
+from pydantic import BaseModel, DirectoryPath, Field, BaseSettings, AmqpDsn
 
 
 class State(IntEnum):
