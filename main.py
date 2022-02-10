@@ -79,18 +79,15 @@ def lock_gphoto2(callback, *decorator_args, **decorator_kwargs):
 def release_shutter(pins: Union[List[int], int], exptimes: Union[List[float], float]):
     """Trigger the shutter release for given exposure time via the GPIO pins."""
     for exptime in listify(exptimes):
-        print(f'Triggering {pins=} for {exptime=} seconds.')
 
         for pin in pins:
             gpio.write(pin, State.HIGH)
 
-        print(f'Sleeping for {exptime=} seconds.')
+        print(f'Shutter open for {exptime=} seconds on {pins=}.')
         time.sleep(exptime)
 
         for pin in pins:
             gpio.write(pin, State.LOW)
-
-        print(f'Done on {pins=} after {exptime=} seconds.')
 
 
 @app.task(name='camera.take_observation', bind=True)
@@ -101,7 +98,9 @@ def take_observation(self, exptime: Union[List[float], float], num_exposures: in
     while pic_num <= num_exposures:
         self.update_state(state='OBSERVING',
                           meta=dict(current=pic_num, num_exposures=num_exposures))
+        print(f'Image {pic_num:03d}/{num_exposures:03d} for {exptime=}s.')
         release_shutter(app_settings.pins, exptime)
+        print(f'Done with {pic_num}/{num_exposures} after {exptime=}s.')
 
         time.sleep(sleep_interval)
         pic_num += 1
