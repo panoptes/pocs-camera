@@ -54,7 +54,7 @@ gpio = pigpio.pi()
 app_settings.setup_pins()
 
 camera_match_re = re.compile(r'([\w\d\s_.]{30})\s(usb:\d{3},\d{3})')
-file_save_re = re.compile(r'Saving file as (\.*)')
+file_save_re = re.compile(r'Saving file as (.*)')
 
 
 def lock_gphoto2(callback, *decorator_args, **decorator_kwargs):
@@ -147,7 +147,7 @@ def gphoto_file_download(self,
     for line in results['output']:
         print(f'Looking for filename in {line}')
         file_match = file_save_re.match(line)
-        if file_match:
+        if file_match is not None:
             print(f'Found match {file_match.group(1)}')
             filenames.append(file_match.group(1).strip())
 
