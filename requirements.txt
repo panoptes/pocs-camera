@@ -3,6 +3,6 @@ celery
 loguru
 panoptes-utils[config]
 pigpio
-pydantic
+pydantic>=1.9.0
 requests
 uvicorn[standard]

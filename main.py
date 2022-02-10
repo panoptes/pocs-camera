@@ -11,9 +11,8 @@ from pathlib import Path
 from typing import Optional, List, Dict, Union
 
 import pigpio
-from panoptes.utils.config.client import get_config
 from panoptes.utils.utils import listify
-from pydantic import BaseModel, DirectoryPath, Field, BaseSettings
+from pydantic import BaseModel, DirectoryPath, Field, BaseSettings, AmqpDsn, Config
 
 
 class State(IntEnum):
@@ -23,12 +22,18 @@ class State(IntEnum):
 
 class Settings(BaseSettings):
     gpio_pins: List[int] = [17, 18]
+    broker_url: AmqpDsn = 'amqp://guest:guest@localhost:5672//'
+    result_backend: str = 'rpc://'
+
+    class Config:
+        env_file = '.env'
+        env_prefix = 'pocs_'
 
 
 class AppSettings(BaseModel):
     base_dir: Optional[DirectoryPath] = Path('images')
     pins: List[int] = Field(default_factory=list)
-    celery: Dict = Field(default_factory=dict),
+    celery: Dict = Field(default_factory=dict)
     cameras: Dict = Field(default_factory=dict)
     processes: Dict = Field(default_factory=dict)
 
@@ -43,7 +48,9 @@ class AppSettings(BaseModel):
 
 
 # Get overall settings.
-app_settings = AppSettings(pins=Settings().gpio_pins, celery=get_config('celery', default=dict()))
+settings = Settings()
+app_settings = AppSettings(pins=settings.gpio_pins, celery=dict(broker_url=settings.broker_url,
+                                                                result_backend=settings.result_backend))
 
 # Start celery.
 app = Celery()
