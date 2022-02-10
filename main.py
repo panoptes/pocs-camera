@@ -54,6 +54,7 @@ gpio = pigpio.pi()
 app_settings.setup_pins()
 
 camera_match_re = re.compile(r'([\w\d\s_.]{30})\s(usb:\d{3},\d{3})')
+file_save_re = re.compile(r'Saving file as (\.*)')
 
 
 def lock_gphoto2(callback, *decorator_args, **decorator_kwargs):
@@ -141,7 +142,14 @@ def gphoto_file_download(self,
     if only_new:
         command.append('--new')
 
-    gphoto2_command(command, port=port)
+    results = gphoto2_command(command, port=port)
+    filenames = list()
+    for line in results['output']:
+        file_match = file_save_re.match(line)
+        if file_match:
+            filenames.append(file_match.group(1).strip())
+
+    return filenames
 
 
 @app.task(name='gphoto2.delete_files', bind=True)
@@ -152,7 +160,7 @@ def gphoto_file_delete(self, port: str):
 
 
 def gphoto2_command(command: Union[List[str], str], port: Optional[str] = None,
-                    timeout: float = 300):
+                    timeout: float = 300) -> dict:
     """Perform a gphoto2 command."""
     full_command = [shutil.which('gphoto2')]
 
@@ -174,7 +182,7 @@ def gphoto2_command(command: Union[List[str], str], port: Optional[str] = None,
         success=completed_proc.returncode >= 0,
         returncode=completed_proc.returncode,
         output=completed_proc.stdout.decode('utf-8').split('\n'),
-        error=completed_proc.stderr.decode('utf-8').split(('\n'))
+        error=completed_proc.stderr.decode('utf-8').split('\n')
     )
 
     return command_output
