@@ -149,10 +149,9 @@ def gphoto_file_download(self,
     if only_new:
         command.append('--new')
 
-    results = gphoto2_command(command, port=port)
+    results = gphoto2_command(command, port=port, timeout=600)
     filenames = list()
     for line in results['output']:
-        print(f'Looking for filename in {line}')
         file_match = file_save_re.match(line)
         if file_match is not None:
             print(f'Found match {file_match.group(1)}')
