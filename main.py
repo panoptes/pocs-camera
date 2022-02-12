@@ -177,6 +177,7 @@ def gphoto_tether(self,
     command = ['--filename', filename_pattern, '--capture-tethered']
     full_command = _build_gphoto2_command(command, port)
     proc = subprocess.Popen(full_command, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+    print(f'gphoto2 tether started on {proc.pid=}')
     self.update_state(state='TETHERED', meta=dict(directory=filename_pattern, pid=proc.pid))
 
     # Wait forever. Rely on external kill via pid above.
