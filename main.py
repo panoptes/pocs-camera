@@ -153,7 +153,8 @@ async def list_connected_cameras(match_pins: bool = False) -> dict:
                 before_count = await gphoto2_command(shutter_cmd)
                 release_shutter(pin, 1)
                 after_count = await gphoto2_command(shutter_cmd)
-                if after_count - before_count == 1:
+                print(f'Checking {after_count=} and {before_count=}')
+                if after_count.output - before_count.output == 1:
                     camera = Camera(name=cam_name, port=port, pin=pin, uid=cam_id)
                     print(f'Loaded {camera=}')
                     app_settings.cameras.append(camera)
