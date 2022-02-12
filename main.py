@@ -49,7 +49,7 @@ class Observation(BaseModel):
 
 class GphotoCommand(BaseModel):
     """Accepts an arbitrary command string which is passed to gphoto2."""
-    arguments: str = '--auto-detect'
+    arguments: List[str] = '--auto-detect'
     port: Optional[str] = None,
     timeout: Optional[float] = 300
 
