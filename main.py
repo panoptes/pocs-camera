@@ -74,10 +74,13 @@ def lock_gphoto2(callback, *decorator_args, **decorator_kwargs):
                 for running_task in queue:
                     if running_task['name'].startswith('gphoto2.'):
                         with suppress(IndexError):
-                            same_port = running_task['args'][0] == task.args[0]
+                            print(f"port: running_task['kwargs']['port'] == task.kwargs['port']")
+                            print(f"id: running_task['id'] == task.request.id")
+                            same_port = running_task['kwargs']['port'] == task.kwargs['port']
                             different_tasks = task.request.id != running_task['id']
                             if same_port and different_tasks:
-                                return f'Another gphoto2 task is already in progress'
+                                print(f'Another gphoto2 task is already in progress')
+                                return
 
         return callback(task, *args, **kwargs)
 
@@ -140,11 +143,12 @@ def list_connected_cameras(self) -> dict:
 
 @app.task(name='gphoto2.file_download', bind=True)
 def gphoto_file_download(self,
-                         port: str,
                          filename_pattern: str,
-                         only_new: bool = True):
+                         port: Optional[str] = None,
+                         only_new: bool = True
+                         ):
     """Downloads (newer) files from the camera on the given port using the filename pattern."""
-    print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
+    print(f'Starting gphoto2 download for {port=} using {filename_pattern=}')
     command = ['--filename', filename_pattern, '--get-all-files', '--recurse']
     if only_new:
         command.append('--new')
@@ -160,8 +164,18 @@ def gphoto_file_download(self,
     return filenames
 
 
+@app.task(name='gphoto2.tether', bind=True)
+def gphoto_tether(self,
+                  filename_pattern: str,
+                  port: Optional[str] = None,
+                  ):
+    """Start a tether for gphoto2 auto-download."""
+    print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
+    gphoto2_command(['--filename', filename_pattern, '--capture-tether'], port=port)
+
+
 @app.task(name='gphoto2.delete_files', bind=True)
-def gphoto_file_delete(self, port: str):
+def gphoto_file_delete(self, port: Optional[str] = None):
     """Removes all files from the camera on the given port."""
     print(f'Deleting all files for {port=}')
     gphoto2_command('--delete-all-files --recurse', port=port)
@@ -177,17 +191,7 @@ def gphoto_command(self, command: Union[List[str], str], port: Optional[str] = N
 def gphoto2_command(command: Union[List[str], str], port: Optional[str] = None,
                     timeout: float = 300) -> dict:
     """Perform a gphoto2 command."""
-    full_command = [shutil.which('gphoto2')]
-
-    if port is not None:
-        full_command.append('--port')
-        full_command.append(port)
-
-    # Turn command into a list if not one already.
-    with suppress(AttributeError):
-        command = command.split(' ')
-
-    full_command.extend(command)
+    full_command = _build_gphoto2_command(command, port)
     print(f'Running gphoto2 {full_command=}')
 
     completed_proc = subprocess.run(full_command, capture_output=True, timeout=timeout)
@@ -201,3 +205,19 @@ def gphoto2_command(command: Union[List[str], str], port: Optional[str] = None,
     )
 
     return command_output
+
+
+def _build_gphoto2_command(command: Union[List[str], str], port: Optional[str] = None):
+    full_command = [shutil.which('gphoto2')]
+
+    if port is not None:
+        full_command.append('--port')
+        full_command.append(port)
+
+    # Turn command into a list if not one already.
+    with suppress(AttributeError):
+        command = command.split(' ')
+
+    full_command.extend(command)
+
+    return full_command
