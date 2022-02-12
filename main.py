@@ -145,12 +145,11 @@ async def list_connected_cameras(match_pins: bool = False) -> dict:
         for i, (cam_id, port) in enumerate(camera_info.items()):
             cam_name = f'Cam{i:02d}'
             for pin in app_settings.pins:
+                shutter_cmd = GphotoCommand(port=port, arguments=['--get-config', 'shuttercounter'])
                 print(f'Checking pin for {cam_id=} on {port=}')
-                before_count = await gphoto2_command(arguments=['--get-config', 'shuttercounter'],
-                                                     port=port)
+                before_count = await gphoto2_command(shutter_cmd)
                 release_shutter(pin, 1)
-                after_count = await gphoto2_command(arguments=['--get-config', 'shuttercounter'],
-                                                    port=port)
+                after_count = await gphoto2_command(shutter_cmd)
                 if after_count - before_count == 1:
                     camera = Camera(name=cam_name, port=port, pin=pin, uid=cam_id)
                     print(f'Loaded {camera=}')
