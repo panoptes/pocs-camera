@@ -174,7 +174,7 @@ def gphoto_tether(self,
     """Start a tether for gphoto2 auto-download."""
     print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
     self.update_state(state='TETHERED', meta=dict(directory=filename_pattern))
-    gphoto2_command(['--filename', filename_pattern, '--capture-tethered'], port=port)
+    gphoto2_command(['--filename', filename_pattern, '--capture-tethered'], port=port, timeout=None)
 
 
 @app.task(name='gphoto2.delete_files', bind=True)
@@ -192,7 +192,7 @@ def gphoto_command(self, command: Union[List[str], str], port: Optional[str] = N
 
 
 def gphoto2_command(command: Union[List[str], str], port: Optional[str] = None,
-                    timeout: float = 300) -> dict:
+                    timeout: Optional[float] = 300) -> dict:
     """Perform a gphoto2 command."""
     full_command = _build_gphoto2_command(command, port)
     print(f'Running gphoto2 {full_command=}')
