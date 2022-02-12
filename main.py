@@ -173,6 +173,7 @@ async def gphoto2_command(command: GphotoCommand):
     output = completed_proc.stdout.decode('utf-8').split('\n')
     if command.return_property:
         for line in output:
+            print(f'Looking for property in {line=}')
             if line.startswith('Current: '):
                 output = line.replace('Current: ', '')
 
