@@ -22,10 +22,17 @@ class Settings(BaseSettings):
     gpio_pins: List[int] = [17, 18]
 
 
+class Camera(BaseModel):
+    name: str
+    uid: str
+    port: str
+    pin: int
+
+
 class AppSettings(BaseModel):
     base_dir: Optional[DirectoryPath] = Path('images')
     pins: List[int] = Field(default_factory=list)
-    cameras: Dict = Field(default_factory=dict)
+    cameras: List[Camera] = Field(default_factory=list)
     ports: Dict = Field(default_factory=dict)
     processes: Dict = Field(default_factory=dict)
     is_observing: bool = False
@@ -36,7 +43,7 @@ class Observation(BaseModel):
     exptime: Union[List[float], float]
     field_name: str = ''
     num_exposures: int = 1
-    readout_time: float = 0.25
+    readout_time: float
     use_tether: bool = False
 
 
@@ -63,24 +70,10 @@ async def startup_tasks():
     If no settings are specified, this will attempt to associate a GPIO pin
     with a usb port via gphoto2.
     """
-    camera_info = await list_connected_cameras()
-
     # Get GPIO pins and set OUTPUT mode.
     for i, pin in enumerate(app_settings.pins):
-        cam_name = f'Cam{i:02d}'
-        print(f'Setting {pin=} as OUTPUT and assigning {cam_name=}')
+        print(f'Setting {pin=} as OUTPUT')
         gpio.set_mode(pin, pigpio.OUTPUT)
-        app_settings.cameras[cam_name] = pin
-
-        for cam_id, port in camera_info.items():
-            print(f'Checking pin for {cam_id=} on {port=}')
-            before_count = await gphoto2_command(['--get-config', 'shuttercounter'], port=port)
-            await release_shutter(pin, 1)
-            after_count = await gphoto2_command(['--get-config', 'shuttercounter'], port=port)
-            if after_count - before_count == 1:
-                print(f'{cam_id=} is on {port=} and {pin=}')
-                app_settings.ports[port] = pin
-                break
 
 
 @app.on_event('shutdown')
@@ -142,7 +135,7 @@ async def list_connected_cameras() -> dict:
     result = subprocess.check_output(command).decode('utf-8')
     lines = result.split('\n')
 
-    cameras = dict()
+    camera_info = dict()
     for line in lines:
         camera_match = re.match(r'([\w\d\s_.]{30})\s(usb:\d{3},\d{3})', line)
         if camera_match:
@@ -150,9 +143,22 @@ async def list_connected_cameras() -> dict:
             get_port_command = [gphoto2, '--port', port, '--get-config', 'serialnumber']
             completed_proc = subprocess.run(get_port_command, capture_output=True)
             cam_id = completed_proc.stdout.decode().split('\n')[3].split(' ')[-1][-6:]
-            cameras[cam_id] = port
+            camera_info[cam_id] = port
 
-    return cameras
+    for i, (cam_id, port) in enumerate(camera_info.items()):
+        cam_name = f'Cam{i:02d}'
+        for pin in app_settings.pins:
+            print(f'Checking pin for {cam_id=} on {port=}')
+            before_count = await gphoto2_command(['--get-config', 'shuttercounter'], port=port)
+            await release_shutter(pin, 1)
+            after_count = await gphoto2_command(['--get-config', 'shuttercounter'], port=port)
+            if after_count - before_count == 1:
+                camera = Camera(name=cam_name, port=port, pin=pin, uid=cam_id)
+                print(f'Loaded {camera=}')
+                app_settings.cameras.append(camera)
+                break
+
+    return camera_info
 
 
 @app.post('/gphoto')
