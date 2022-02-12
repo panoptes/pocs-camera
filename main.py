@@ -52,6 +52,7 @@ class GphotoCommand(BaseModel):
     arguments: List[str] = '--auto-detect'
     port: Optional[str] = None,
     timeout: Optional[float] = 300
+    return_property: bool = False
 
 
 app_settings = AppSettings(pins=Settings().gpio_pins)
@@ -145,7 +146,9 @@ async def list_connected_cameras(match_pins: bool = False) -> dict:
         for i, (cam_id, port) in enumerate(camera_info.items()):
             cam_name = f'Cam{i:02d}'
             for pin in app_settings.pins:
-                shutter_cmd = GphotoCommand(port=port, arguments=['--get-config', 'shuttercounter'])
+                shutter_cmd = GphotoCommand(port=port,
+                                            arguments=['--get-config', 'shuttercounter'],
+                                            return_property=True)
                 print(f'Checking pin for {cam_id=} on {port=}')
                 before_count = await gphoto2_command(shutter_cmd)
                 release_shutter(pin, 1)
@@ -167,11 +170,17 @@ async def gphoto2_command(command: GphotoCommand):
 
     completed_proc = subprocess.run(full_command, capture_output=True, timeout=command.timeout)
 
+    output = completed_proc.stdout.decode('utf-8').split('\n')
+    if command.return_property:
+        for line in output:
+            if line.startswith('Current: '):
+                output = line.replace('Current: ', '')
+
     # Populate return items.
     command_output = dict(
         success=completed_proc.returncode >= 0,
         returncode=completed_proc.returncode,
-        output=completed_proc.stdout.decode('utf-8').split('\n'),
+        output=output,
         error=completed_proc.stderr.decode('utf-8').split('\n')
     )
 
