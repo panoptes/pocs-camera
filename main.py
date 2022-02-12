@@ -1,4 +1,5 @@
 import re
+import time
 import shutil
 import subprocess
 from contextlib import suppress
@@ -8,7 +9,6 @@ from typing import Optional, List, Dict, Union
 
 import pigpio
 from datetime import datetime as dt
-from anyio import sleep, create_task_group
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel, DirectoryPath, Field, BaseSettings
 
@@ -220,16 +220,16 @@ def release_shutter(pin: int, exptime: float):
     """Trigger the shutter release for given exposure time."""
     print(f'Triggering {pin=} for {exptime=} seconds at {dt.utcnow()}.')
     open_shutter(pin)
-    sleep(exptime)
+    time.sleep(exptime)
     close_shutter(pin)
 
 
-async def open_shutter(pin: int):
+def open_shutter(pin: int):
     """Opens the shutter for the camera."""
     gpio.write(pin, State.HIGH)
 
 
-async def close_shutter(pin: int):
+def close_shutter(pin: int):
     """Closes the shutter for the camera."""
     gpio.write(pin, State.LOW)
 
