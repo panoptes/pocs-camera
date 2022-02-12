@@ -174,7 +174,7 @@ def gphoto_tether(self,
     """Start a tether for gphoto2 auto-download."""
     print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
     self.update_state(state='TETHERED', meta=dict(directory=filename_pattern))
-    gphoto2_command(['--filename', filename_pattern, '--capture-tether'], port=port)
+    gphoto2_command(['--filename', filename_pattern, '--capture-tethered'], port=port)
 
 
 @app.task(name='gphoto2.delete_files', bind=True)
