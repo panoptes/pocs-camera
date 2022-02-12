@@ -119,7 +119,7 @@ async def take_observation(observation: Observation):
 
 
 @app.get('/list-cameras')
-async def list_connected_cameras() -> dict:
+async def list_connected_cameras(match_pins: bool = False) -> dict:
     """Detect connected cameras.
 
     Uses gphoto2 to try and detect which cameras are connected. Cameras should
@@ -145,18 +145,19 @@ async def list_connected_cameras() -> dict:
             cam_id = completed_proc.stdout.decode().split('\n')[3].split(' ')[-1][-6:]
             camera_info[cam_id] = port
 
-    for i, (cam_id, port) in enumerate(camera_info.items()):
-        cam_name = f'Cam{i:02d}'
-        for pin in app_settings.pins:
-            print(f'Checking pin for {cam_id=} on {port=}')
-            before_count = await gphoto2_command(['--get-config', 'shuttercounter'], port=port)
-            await release_shutter(pin, 1)
-            after_count = await gphoto2_command(['--get-config', 'shuttercounter'], port=port)
-            if after_count - before_count == 1:
-                camera = Camera(name=cam_name, port=port, pin=pin, uid=cam_id)
-                print(f'Loaded {camera=}')
-                app_settings.cameras.append(camera)
-                break
+    if match_pins:
+        for i, (cam_id, port) in enumerate(camera_info.items()):
+            cam_name = f'Cam{i:02d}'
+            for pin in app_settings.pins:
+                print(f'Checking pin for {cam_id=} on {port=}')
+                before_count = await gphoto2_command(['--get-config', 'shuttercounter'], port=port)
+                await release_shutter(pin, 1)
+                after_count = await gphoto2_command(['--get-config', 'shuttercounter'], port=port)
+                if after_count - before_count == 1:
+                    camera = Camera(name=cam_name, port=port, pin=pin, uid=cam_id)
+                    print(f'Loaded {camera=}')
+                    app_settings.cameras.append(camera)
+                    break
 
     return camera_info
 
