@@ -35,16 +35,30 @@ class AppSettings(BaseModel):
     pins: List[int] = Field(default_factory=list)
     celery: Dict = Field(default_factory=dict)
     cameras: Dict = Field(default_factory=dict)
+    ports: Dict = Field(default_factory=dict)
     processes: Dict = Field(default_factory=dict)
 
     def setup_pins(self):
         """Sets the mode for the GPIO pins"""
+        camera_info = list_connected_cameras()
+
         # Get GPIO pins and set OUTPUT mode.
         for i, pin in enumerate(self.pins):
             cam_name = f'Cam{i:02d}'
             print(f'Setting {pin=} as OUTPUT and assigning {cam_name=}')
             gpio.set_mode(pin, pigpio.OUTPUT)
             self.cameras[cam_name] = pin
+
+            # Get serial number.
+            for cam_id, port in camera_info.items():
+                print(f'Checking pin for {cam_id=} on {port=}')
+                before_count = gphoto2_command(['--get-config', 'shuttercounter'], port=port)
+                release_shutter(pin, 1)
+                after_count = gphoto2_command(['--get-config', 'shuttercounter'], port=port)
+                if after_count - before_count == 1:
+                    print(f'{cam_id=} is on {port=} and {pin=}')
+                    self.ports[port] = pin
+                    break
 
 
 # Get overall settings.
@@ -87,22 +101,17 @@ def lock_gphoto2(callback, *decorator_args, **decorator_kwargs):
     return _wrapper
 
 
-def release_shutter(pins: Union[List[int], int], exptimes: Union[List[float], float]):
+def release_shutter(pin: int, exptime: float):
     """Trigger the shutter release for given exposure time via the GPIO pins."""
-    for exptime in listify(exptimes):
-
-        for pin in pins:
-            gpio.write(pin, State.HIGH)
-
-        print(f'Shutter open for {exptime=} seconds on {pins=}.')
-        time.sleep(exptime)
-
-        for pin in pins:
-            gpio.write(pin, State.LOW)
+    gpio.write(pin, State.HIGH)
+    time.sleep(exptime)
+    gpio.write(pin, State.LOW)
 
 
 @app.task(name='camera.take_observation', bind=True)
-def take_observation(self, exptime: Union[List[float], float], num_exposures: int = 1,
+def take_observation(self, exptime: Union[List[float], float],
+                     port: Optional[str] = None,
+                     num_exposures: int = 1,
                      readout_time: float = 0.25):
     """Take a sequence of images via GPIO shutter trigger."""
     pic_num = 1
@@ -110,7 +119,9 @@ def take_observation(self, exptime: Union[List[float], float], num_exposures: in
         self.update_state(state='OBSERVING',
                           meta=dict(current=pic_num, num_exposures=num_exposures))
         print(f'Image {pic_num:03d}/{num_exposures:03d} for {exptime=}s.')
-        release_shutter(app_settings.pins, exptime)
+        for exptime in listify(exptime):
+            print(f'Opening shutter for {exptime=} seconds on {port=}.')
+            release_shutter(app_settings.ports[port], exptime)
         print(f'Done with {pic_num}/{num_exposures} after {exptime=}s.')
 
         time.sleep(readout_time)
@@ -173,10 +184,12 @@ def gphoto_tether(self,
                   ):
     """Start a tether for gphoto2 auto-download."""
     print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
-    self.update_state(state='TETHERED', meta=dict(directory=filename_pattern))
+
     command = ['--filename', filename_pattern, '--capture-tethered']
     full_command = _build_gphoto2_command(command, port)
+
     proc = subprocess.Popen(full_command, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+
     print(f'gphoto2 tether started on {proc.pid=}')
     self.update_state(state='TETHERED', meta=dict(directory=filename_pattern, pid=proc.pid))
 
@@ -193,7 +206,7 @@ def gphoto_file_delete(self, port: Optional[str] = None):
 
 
 @app.task(name='gphoto2.command', bind=True)
-def gphoto_command(self, command: Union[List[str], str], port: Optional[str] = None):
+def gphoto_task(self, command: Union[List[str], str], port: Optional[str] = None):
     """Perform arbitrary gphoto2 command.."""
     print(f'Calling {command=} on {port=}')
     return gphoto2_command(command, port=port)
