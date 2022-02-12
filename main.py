@@ -9,7 +9,7 @@ from typing import Optional, List, Dict, Union
 import pigpio
 from datetime import datetime as dt
 from anyio import sleep, create_task_group
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel, DirectoryPath, Field, BaseSettings
 
 
@@ -83,7 +83,7 @@ async def shutdown_tasks():
 
 
 @app.post('/take-observation')
-async def take_observation(observation: Observation):
+async def take_observation(observation: Observation, background_tasks: BackgroundTasks):
     """Take a picture by setting GPIO port high"""
     if app_settings.is_observing:
         return dict(success=False, message=f'Observation already in progress')
@@ -100,9 +100,9 @@ async def take_observation(observation: Observation):
         app_settings.is_observing = True
         print(f'Taking photo {pic_num:03d} of {observation.num_exposures:03d} '
               f'[{(dt.utcnow() - start_time).seconds}s]')
-        async with create_task_group() as tg:
-            for pin in app_settings.pins:
-                tg.start_soon(release_shutter, pin, observation.exptime)
+
+        for pin in app_settings.pins:
+            background_tasks.add_task(release_shutter, pin, observation.exptime)
 
         print(f'Done with photo {pic_num:03d} of {observation.num_exposures:03d} '
               f'[{(dt.utcnow() - start_time).seconds}s]')
@@ -151,7 +151,7 @@ async def list_connected_cameras(match_pins: bool = False) -> dict:
             for pin in app_settings.pins:
                 print(f'Checking pin for {cam_id=} on {port=}')
                 before_count = await gphoto2_command(['--get-config', 'shuttercounter'], port=port)
-                await release_shutter(pin, 1)
+                release_shutter(pin, 1)
                 after_count = await gphoto2_command(['--get-config', 'shuttercounter'], port=port)
                 if after_count - before_count == 1:
                     camera = Camera(name=cam_name, port=port, pin=pin, uid=cam_id)
@@ -210,12 +210,12 @@ async def _build_gphoto2_command(command: Union[List[str], str], port: Optional[
     return full_command
 
 
-async def release_shutter(pin: int, exptime: float):
+def release_shutter(pin: int, exptime: float):
     """Trigger the shutter release for given exposure time."""
     print(f'Triggering {pin=} for {exptime=} seconds at {dt.utcnow()}.')
-    await open_shutter(pin)
-    await sleep(exptime)
-    await close_shutter(pin)
+    open_shutter(pin)
+    sleep(exptime)
+    close_shutter(pin)
 
 
 async def open_shutter(pin: int):
