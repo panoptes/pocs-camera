@@ -158,8 +158,10 @@ def gphoto_file_download(self,
     for line in results['output']:
         file_match = file_save_re.match(line)
         if file_match is not None:
-            print(f'Found match {file_match.group(1)}')
-            filenames.append(file_match.group(1).strip())
+            fn = file_match.group(1).strip()
+            print(f'Found match {fn}')
+            filenames.append(fn)
+            self.update_state(state='DOWNLOADING', meta=dict(directory=fn))
 
     return filenames
 
@@ -171,6 +173,7 @@ def gphoto_tether(self,
                   ):
     """Start a tether for gphoto2 auto-download."""
     print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
+    self.update_state(state='TETHERED', meta=dict(directory=filename_pattern))
     gphoto2_command(['--filename', filename_pattern, '--capture-tether'], port=port)
 
 
