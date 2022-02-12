@@ -174,7 +174,14 @@ def gphoto_tether(self,
     """Start a tether for gphoto2 auto-download."""
     print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
     self.update_state(state='TETHERED', meta=dict(directory=filename_pattern))
-    gphoto2_command(['--filename', filename_pattern, '--capture-tethered'], port=port, timeout=None)
+    command = ['--filename', filename_pattern, '--capture-tethered']
+    full_command = _build_gphoto2_command(command, port)
+    proc = subprocess.Popen(full_command, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+    self.update_state(state='TETHERED', meta=dict(directory=filename_pattern, pid=proc.pid))
+
+    # Wait forever. Rely on external kill via pid above.
+    outs, errs = proc.communicate()
+    return dict(outs=outs, errs=errs)
 
 
 @app.task(name='gphoto2.delete_files', bind=True)
