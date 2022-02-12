@@ -50,10 +50,6 @@ class Observation(BaseModel):
 class GphotoCommand(BaseModel):
     """Accepts an arbitrary command string which is passed to gphoto2."""
     arguments: str = '--auto-detect'
-    success: bool = False
-    output: Optional[str]
-    error: Optional[str]
-    returncode: Optional[int]
     port: Optional[str] = None,
     timeout: Optional[float] = 300
 
@@ -150,9 +146,11 @@ async def list_connected_cameras(match_pins: bool = False) -> dict:
             cam_name = f'Cam{i:02d}'
             for pin in app_settings.pins:
                 print(f'Checking pin for {cam_id=} on {port=}')
-                before_count = await gphoto2_command(['--get-config', 'shuttercounter'], port=port)
+                before_count = await gphoto2_command(arguments=['--get-config', 'shuttercounter'],
+                                                     port=port)
                 release_shutter(pin, 1)
-                after_count = await gphoto2_command(['--get-config', 'shuttercounter'], port=port)
+                after_count = await gphoto2_command(arguments=['--get-config', 'shuttercounter'],
+                                                    port=port)
                 if after_count - before_count == 1:
                     camera = Camera(name=cam_name, port=port, pin=pin, uid=cam_id)
                     print(f'Loaded {camera=}')
