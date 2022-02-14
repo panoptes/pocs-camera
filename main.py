@@ -51,7 +51,7 @@ class Observation(BaseModel):
 
 class GphotoCommand(BaseModel):
     """Accepts an arbitrary command string which is passed to gphoto2."""
-    arguments: List[str] = '--auto-detect'
+    arguments: Union[List[str], str] = '--auto-detect'
     port: Optional[str] = None,
     timeout: Optional[float] = 300
     return_property: bool = False
@@ -153,7 +153,7 @@ async def list_connected_cameras(match_pins: bool = False) -> dict:
                                             return_property=True)
                 print(f'Checking pin for {cam_id=} on {port=}')
                 before_count = await gphoto2_command(shutter_cmd)
-                release_shutter(pin, 1)
+                await release_shutter(pin, 1)
                 await sleep(0.25)
                 after_count = await gphoto2_command(shutter_cmd)
                 print(f'Checking {after_count=} and {before_count=}')
@@ -221,20 +221,21 @@ async def _build_gphoto2_command(command: Union[List[str], str], port: Optional[
     return full_command
 
 
-def release_shutter(pin: int, exptime: float):
+@app.post('/release-shutter')
+async def release_shutter(pin: int, exptime: float):
     """Trigger the shutter release for given exposure time."""
     print(f'Triggering {pin=} for {exptime=} seconds at {dt.utcnow()}.')
-    open_shutter(pin)
-    time.sleep(exptime)
-    close_shutter(pin)
+    await open_shutter(pin)
+    await sleep(exptime)
+    await close_shutter(pin)
 
 
-def open_shutter(pin: int):
+async def open_shutter(pin: int):
     """Opens the shutter for the camera."""
     gpio.write(pin, State.HIGH)
 
 
-def close_shutter(pin: int):
+async def close_shutter(pin: int):
     """Closes the shutter for the camera."""
     gpio.write(pin, State.LOW)
 
