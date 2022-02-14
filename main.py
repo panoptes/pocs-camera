@@ -221,13 +221,18 @@ async def _build_gphoto2_command(command: Union[List[str], str], port: Optional[
     return full_command
 
 
+class PinExposure(BaseModel):
+    pin: int
+    exptime: float
+
+
 @app.post('/release-shutter')
-async def release_shutter(pin: int, exptime: float):
+async def release_shutter(exposure: PinExposure):
     """Trigger the shutter release for given exposure time."""
-    print(f'Triggering {pin=} for {exptime=} seconds at {dt.utcnow()}.')
-    await open_shutter(pin)
-    await sleep(exptime)
-    await close_shutter(pin)
+    print(f'Triggering {exposure.pin=} for {exposure.exptime=} seconds at {dt.utcnow()}.')
+    await open_shutter(exposure.pin)
+    await sleep(exposure.exptime)
+    await close_shutter(exposure.pin)
 
 
 async def open_shutter(pin: int):
