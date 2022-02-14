@@ -9,6 +9,8 @@ from typing import Optional, List, Dict, Union
 
 import pigpio
 from datetime import datetime as dt
+
+from anyio import sleep
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel, DirectoryPath, Field, BaseSettings
 
@@ -152,6 +154,7 @@ async def list_connected_cameras(match_pins: bool = False) -> dict:
                 print(f'Checking pin for {cam_id=} on {port=}')
                 before_count = await gphoto2_command(shutter_cmd)
                 release_shutter(pin, 1)
+                await sleep(0.25)
                 after_count = await gphoto2_command(shutter_cmd)
                 print(f'Checking {after_count=} and {before_count=}')
                 if int(after_count['output']) - int(before_count['output']) == 1:
