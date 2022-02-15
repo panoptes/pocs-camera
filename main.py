@@ -112,6 +112,16 @@ async def take_observation(observation: Observation):
         pic_num += 1
 
     if observation.use_tether:
+        # Wait for all files to be present.
+        still_downloading = True
+        while still_downloading:
+            files = [list(Path(d).glob('*.cr2')) for d in app_settings.processes.keys()]
+            if any([len(l) < observation.num_exposures for l in files]):
+                print(f'Still waiting on download')
+                await sleep(1)
+            else:
+                still_downloading = False
+
         await stop_gphoto_tether()
 
     print(f'Done with observation [{(dt.utcnow() - start_time).seconds}s]')
@@ -256,20 +266,21 @@ async def start_gphoto_tether(sequence_id, field_name):
     cameras = await list_connected_cameras()
     for cam_id, port in cameras.items():
         output_dir = app_settings.base_dir / field_name
-        filename_pattern = f'{output_dir}/{cam_id}/{sequence_id}/%Y%m%dT%H%M%S.cr2'
+        sequence_dir = f'{output_dir}/{cam_id}/{sequence_id}'
+        filename_pattern = f'{sequence_dir}/%Y%m%dT%H%M%S.cr2'
         print(f'Starting gphoto2 tether for {port=} using {filename_pattern=}')
         command = [gphoto2, '--port', port, '--filename', filename_pattern, '--capture-tethered']
 
         proc = subprocess.Popen(command)
-        app_settings.processes[cam_id] = proc
+        app_settings.processes[sequence_dir] = proc
 
 
 async def stop_gphoto_tether():
     """Stops all gphoto tether processes."""
-    for cam_id, proc in app_settings.processes.items():
+    for sequence_dir, proc in app_settings.processes.items():
         outs = errs = ''
         try:
-            outs, errs = proc.communicate(timeout=180)
+            outs, errs = proc.communicate(timeout=15)
         except subprocess.TimeoutExpired:
             proc.kill()
             outs, errs = proc.communicate()
