@@ -269,7 +269,7 @@ async def stop_gphoto_tether():
     for cam_id, proc in app_settings.processes.items():
         outs = errs = ''
         try:
-            outs, errs = proc.communicate(timeout=15)
+            outs, errs = proc.communicate(timeout=180)
         except subprocess.TimeoutExpired:
             proc.kill()
             outs, errs = proc.communicate()
