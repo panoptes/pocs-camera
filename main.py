@@ -44,7 +44,7 @@ class Observation(BaseModel):
     exptime: Union[List[float], float]
     field_name: str = ''
     num_exposures: int = 1
-    readout_time: float
+    readout_time: float = 0.25
     use_tether: bool = False
 
 
@@ -101,7 +101,7 @@ async def take_observation(observation: Observation):
 
         # Take the image on each camera.
         await asyncio.gather(*[
-            release_shutter(pin, observation.exptime)
+            release_shutter(PinExposure(pin=pin, exptime=observation.exptime))
             for pin in app_settings.pins
         ])
 
