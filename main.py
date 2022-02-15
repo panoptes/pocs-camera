@@ -1,17 +1,16 @@
+import asyncio
 import re
-import time
 import shutil
 import subprocess
 from contextlib import suppress
+from datetime import datetime as dt
 from enum import IntEnum
 from pathlib import Path
 from typing import Optional, List, Dict, Union
 
 import pigpio
-from datetime import datetime as dt
-
 from anyio import sleep
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI
 from pydantic import BaseModel, DirectoryPath, Field, BaseSettings
 
 
@@ -82,7 +81,7 @@ async def shutdown_tasks():
 
 
 @app.post('/take-observation')
-async def take_observation(observation: Observation, background_tasks: BackgroundTasks):
+async def take_observation(observation: Observation):
     """Take a picture by setting GPIO port high"""
     if app_settings.is_observing:
         return dict(success=False, message=f'Observation already in progress')
@@ -100,8 +99,11 @@ async def take_observation(observation: Observation, background_tasks: Backgroun
         print(f'Taking photo {pic_num:03d} of {observation.num_exposures:03d} '
               f'[{(dt.utcnow() - start_time).seconds}s]')
 
-        for pin in app_settings.pins:
-            background_tasks.add_task(release_shutter, pin, observation.exptime)
+        # Take the image on each camera.
+        await asyncio.gather(*[
+            release_shutter(pin, observation.exptime)
+            for pin in app_settings.pins
+        ])
 
         print(f'Done with photo {pic_num:03d} of {observation.num_exposures:03d} '
               f'[{(dt.utcnow() - start_time).seconds}s]')
@@ -205,6 +207,20 @@ async def tether_status():
     return {cam_id: is_running(p) for cam_id, p in app_settings.processes.items()}
 
 
+class PinExposure(BaseModel):
+    pin: int
+    exptime: float
+
+
+@app.post('/release-shutter')
+async def release_shutter(exposure: PinExposure):
+    """Trigger the shutter release for given exposure time."""
+    print(f'Triggering {exposure.pin=} for {exposure.exptime=} seconds at {dt.utcnow()}.')
+    await open_shutter(exposure.pin)
+    await sleep(exposure.exptime)
+    await close_shutter(exposure.pin)
+
+
 async def _build_gphoto2_command(command: Union[List[str], str], port: Optional[str] = None):
     full_command = [shutil.which('gphoto2')]
 
@@ -219,20 +235,6 @@ async def _build_gphoto2_command(command: Union[List[str], str], port: Optional[
     full_command.extend(command)
 
     return full_command
-
-
-class PinExposure(BaseModel):
-    pin: int
-    exptime: float
-
-
-@app.post('/release-shutter')
-async def release_shutter(exposure: PinExposure):
-    """Trigger the shutter release for given exposure time."""
-    print(f'Triggering {exposure.pin=} for {exposure.exptime=} seconds at {dt.utcnow()}.')
-    await open_shutter(exposure.pin)
-    await sleep(exposure.exptime)
-    await close_shutter(exposure.pin)
 
 
 async def open_shutter(pin: int):
