@@ -117,12 +117,12 @@ async def take_observation(observation: Observation):
         still_downloading = True
         while still_downloading:
             files = [list(Path(d).glob('*.cr2')) for d in app_settings.processes.keys()]
-            file_list.extend(files)
             if any([len(l) < observation.num_exposures for l in files]):
                 print(f'Still waiting on download')
                 await sleep(1)
             else:
                 still_downloading = False
+                file_list.extend(files)
 
         await stop_gphoto_tether()
 
