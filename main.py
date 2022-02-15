@@ -92,6 +92,7 @@ async def take_observation(observation: Observation):
         await start_gphoto_tether(observation.sequence_id, observation.field_name)
         await sleep(1)
 
+    file_list = list()
     pic_num = 1
     start_time = dt.utcnow()
     while pic_num <= observation.num_exposures:
@@ -116,6 +117,7 @@ async def take_observation(observation: Observation):
         still_downloading = True
         while still_downloading:
             files = [list(Path(d).glob('*.cr2')) for d in app_settings.processes.keys()]
+            file_list.extend(files)
             if any([len(l) < observation.num_exposures for l in files]):
                 print(f'Still waiting on download')
                 await sleep(1)
@@ -126,7 +128,7 @@ async def take_observation(observation: Observation):
 
     print(f'Done with observation [{(dt.utcnow() - start_time).seconds}s]')
     app_settings.is_observing = False
-    return dict(success=True, message=f'Observation complete')
+    return dict(success=True, message=f'Observation complete', files=file_list)
 
 
 @app.get('/list-cameras')
