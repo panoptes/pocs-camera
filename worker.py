@@ -89,9 +89,11 @@ def release_shutter(self, exptime: float):
 
     while timer.expired() is False:
         self.update_state(state='EXPOSING',
-                          start_time=start_time,
-                          secs=f'{exptime - timer.time_left():02f}',
-                          exptime=exptime)
+                          meta=dict(
+                              start_time=start_time,
+                              secs=f'{exptime - timer.time_left():02f}',
+                              exptime=exptime))
+
         timer.sleep(max_sleep=max(1, exptime / 8))
 
     # Close shutter.
