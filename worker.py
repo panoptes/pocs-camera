@@ -31,7 +31,6 @@ class Settings(BaseSettings):
 
 
 class AppSettings(BaseModel):
-    base_dir: Optional[DirectoryPath] = Path('images')
     pins: List[int] = Field(default_factory=list)
     celery: Dict = Field(default_factory=dict)
     cameras: Dict = Field(default_factory=dict)
@@ -63,8 +62,9 @@ class AppSettings(BaseModel):
 
 # Get overall settings.
 settings = Settings()
-app_settings = AppSettings(pins=settings.gpio_pins, celery=dict(broker_url=settings.broker_url,
-                                                                result_backend=settings.result_backend))
+app_settings = AppSettings(pins=settings.gpio_pins,
+                           celery=dict(broker_url=settings.broker_url,
+                                       result_backend=settings.result_backend))
 
 # Start celery.
 app = Celery()
