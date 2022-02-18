@@ -88,7 +88,7 @@ def release_shutter(self, exptime: float):
         self.update_state(state='EXPOSING',
                           meta=dict(
                               start_time=start_time,
-                              secs=f'{exptime - timer.time_left():02f}',
+                              secs=f'{exptime - timer.time_left():.02f}',
                               exptime=exptime))
 
         timer.sleep(max_sleep=max(1., exptime / 8))
@@ -97,22 +97,6 @@ def release_shutter(self, exptime: float):
     gpio.write(app_settings.camera.pin, State.LOW)
 
     return start_time
-
-
-@app.task(name='camera.stop_tether')
-def stop_gphoto2_tether():
-    """Tells camera to stop gphoto2 tether."""
-    print(f'Stopping gphoto2 tether for {app_settings.camera}')
-    # Communicate and kill immediately.
-    try:
-        outs, errs = app_settings.process.communicate(timeout=1)
-    except subprocess.TimeoutExpired:
-        app_settings.process.kill()
-        outs, errs = app_settings.process.communicate()
-
-    app_settings.camera.is_tethered = False
-
-    return dict(outs=outs, errs=errs)
 
 
 @app.task(name='camera.start_tether', bind=True)
@@ -133,6 +117,22 @@ def start_gphoto2_tether(self, filename_pattern: str):
                                             stderr=subprocess.STDOUT,
                                             stdout=subprocess.PIPE)
     print(f'gphoto2 tether started for {app_settings.camera} on {app_settings.process.pid=}')
+
+
+@app.task(name='camera.stop_tether')
+def stop_gphoto2_tether():
+    """Tells camera to stop gphoto2 tether."""
+    print(f'Stopping gphoto2 tether for {app_settings.camera}')
+    # Communicate and kill immediately.
+    try:
+        outs, errs = app_settings.process.communicate(timeout=1)
+    except subprocess.TimeoutExpired:
+        app_settings.process.kill()
+        outs, errs = app_settings.process.communicate()
+
+    app_settings.camera.is_tethered = False
+
+    return dict(outs=outs.decode('utf-8'), errs=errs.decode('utf-8'))
 
 
 @app.task(name='camera.file_download', bind=True)
