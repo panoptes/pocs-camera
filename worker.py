@@ -21,7 +21,6 @@ class Settings(BaseSettings):
     camera_name: str
     camera_port: str
     camera_pin: int
-    camera_id: str
     broker_url: AmqpDsn = 'amqp://guest:guest@localhost:5672//'
     result_backend: str = 'rpc://'
 
@@ -34,7 +33,6 @@ class Camera(BaseModel):
     name: str
     port: str
     pin: int
-    uid: str
     is_tethered: bool = False
 
     def setup_pin(self):
@@ -57,8 +55,7 @@ settings = Settings()
 app_settings = AppSettings(
     camera=Camera(name=settings.camera_name,
                   port=settings.camera_port,
-                  pin=settings.camera_pin,
-                  uid=settings.camera_id),
+                  pin=settings.camera_pin),
     celery=dict(broker_url=settings.broker_url,
                 result_backend=settings.result_backend),
 )
@@ -94,7 +91,7 @@ def release_shutter(self, exptime: float):
                               secs=f'{exptime - timer.time_left():02f}',
                               exptime=exptime))
 
-        timer.sleep(max_sleep=max(1, exptime / 8))
+        timer.sleep(max_sleep=max(1., exptime / 8))
 
     # Close shutter.
     gpio.write(app_settings.camera.pin, State.LOW)
@@ -195,10 +192,7 @@ def gphoto2_command(command: Union[List[str], str], timeout: Optional[float] = 3
 
 
 def _build_gphoto2_command(command: Union[List[str], str]):
-    full_command = [shutil.which('gphoto2')]
-
-    full_command.append('--port')
-    full_command.append(app_settings.camera.port)
+    full_command = [shutil.which('gphoto2'), '--port', app_settings.camera.port]
 
     # Turn command into a list if not one already.
     with suppress(AttributeError):
