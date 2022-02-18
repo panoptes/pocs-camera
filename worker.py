@@ -18,7 +18,7 @@ class State(IntEnum):
 
 
 class Settings(BaseSettings):
-    cgamera_name: str
+    camera_name: str
     camera_port: str
     camera_pin: int
     camera_id: str
