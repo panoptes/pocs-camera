@@ -18,7 +18,6 @@ class State(IntEnum):
 
 
 class Settings(BaseSettings):
-    gpio_pin: int
     camera_name: str
     camera_port: str
     camera_pin: int
