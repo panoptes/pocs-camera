@@ -1,6 +1,7 @@
 import re
 import shutil
 import subprocess
+import typing
 from contextlib import suppress
 from enum import IntEnum
 from typing import Optional, List, Dict, Union
@@ -37,7 +38,7 @@ class Camera(BaseModel):
     uid: str
     is_tethered: bool = False
 
-    def setup_pins(self):
+    def setup_pin(self):
         """Sets the mode for the GPIO pin."""
         # Get GPIO pin and set OUTPUT mode.
         print(f'Setting {self.pin=} as OUTPUT for {self.name}')
@@ -47,7 +48,7 @@ class Camera(BaseModel):
 class AppSettings(BaseModel):
     celery: Dict = Field(default_factory=dict)
     camera: Camera
-    process: Optional[subprocess.Popen] = None
+    process: Optional[typing.Any] = None
 
 
 # Create settings from env vars.
@@ -69,7 +70,7 @@ app.config_from_object(app_settings.celery)
 
 # Setup GPIO pins.
 gpio = pigpio.pi()
-app_settings.camera.setup_pins()
+app_settings.camera.setup_pin()
 
 camera_match_re = re.compile(r'([\w\d\s_.]{30})\s(usb:\d{3},\d{3})')
 file_save_re = re.compile(r'Saving file as (.*)')
