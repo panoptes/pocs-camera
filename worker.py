@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     camera_name: str
     camera_port: str
     camera_pin: int
-    broker_url: AmqpDsn = 'amqp://guest:guest@localhost:5672//'
+    broker_url: str = 'amqp://guest:guest@localhost:5672//'
     result_backend: str = 'rpc://'
 
     class Config:
