@@ -9,7 +9,7 @@ from typing import Optional, List, Dict, Union
 import pigpio
 from celery import Celery
 from panoptes.utils.time import current_time, CountdownTimer
-from pydantic import BaseModel, Field, BaseSettings, AmqpDsn
+from pydantic import BaseModel, Field, BaseSettings
 
 
 class State(IntEnum):

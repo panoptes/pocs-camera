@@ -1,5 +1,6 @@
 FastAPI
 anyio
+celery
 loguru
 panoptes-utils[config]
 pigpio
