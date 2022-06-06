@@ -75,28 +75,21 @@ file_save_re = re.compile(r'Saving file as (.*)')
 @app.task(name='camera.release_shutter', bind=True)
 def release_shutter(self, exptime: float):
     """Trigger the shutter release for given exposure time via the GPIO pin."""
-    start_time = current_time(flatten=True)
-    self.update_state(state='EXPOSING', start_time=start_time, secs=0, exptime=exptime)
-
     # Create a timer.
     timer = CountdownTimer(exptime, name=f'Pin{app_settings.camera.pin}Expose')
 
     # Open shutter.
+    self.update_state(state='START_EXPOSING', start_time=current_time(flatten=True))
     gpio.write(app_settings.camera.pin, State.HIGH)
 
+    # Wait for exptime, send state updates.
     while timer.expired() is False:
-        self.update_state(state='EXPOSING',
-                          meta=dict(
-                              start_time=start_time,
-                              secs=f'{exptime - timer.time_left():.02f}',
-                              exptime=exptime))
-
-        timer.sleep(max_sleep=max(1., exptime / 8))
+        self.update_state(state='EXPOSING', meta=dict(secs=f'{exptime - timer.time_left():.02f}', ))
+        timer.sleep(max_sleep=max(1., exptime / 8))  # Divide wait time into eighths.
 
     # Close shutter.
     gpio.write(app_settings.camera.pin, State.LOW)
-
-    return start_time
+    self.update_state(state='STOP_EXPOSING', stop_time=current_time(flatten=True))
 
 
 @app.task(name='camera.start_tether', bind=True)
