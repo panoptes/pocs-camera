@@ -23,8 +23,16 @@ typer_app = typer.Typer()
 
 
 @typer_app.command()
+def command(command_list):
+    """Runs a generic command on the camera."""
+    full_command = ['--port', app_settings.camera.port, *command_list]
+    task = celery_app.send_task('camera.command', args=full_command)
+    return celery_app.AsyncResult(task.id)
+
+
+@typer_app.command()
 def get_property(prop_name):
     """Gets a property from the camera."""
-    task = celery_app.send_task('camera.command', [f'--get-property {prop_name}'])
-
+    full_command = ['--port', app_settings.camera.port, f'--get-property {prop_name}']
+    task = celery_app.send_task('camera.command', args=full_command)
     return celery_app.AsyncResult(task.id)
