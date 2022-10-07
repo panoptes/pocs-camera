@@ -34,7 +34,7 @@ def startup_tasks():
         sys.exit(1)
 
 
-@app.post('/')
+@app.post('/command')
 def gphoto(command: Command):
     """Perform arbitrary gphoto2 command."""
     logger.info(f'Received command={command!r}')
@@ -49,7 +49,8 @@ def gphoto(command: Command):
             app_filename = settings.base_dir / filename_path
             filename_in_args = f'--filename {str(filename_path)}'
             logger.debug(f'Replacing {filename_path} with {app_filename}.')
-            command.arguments = command.arguments.replace(filename_in_args, f'--filename {app_filename}')
+            command.arguments = command.arguments.replace(filename_in_args,
+                                                          f'--filename {app_filename}')
 
     # Build the full command.
     full_command = [shutil.which('gphoto2'), *command.arguments.split(' ')]
