@@ -2,5 +2,4 @@ anyio
 fastapi
 panoptes-utils
 pydantic
-python3-lgpio
-uvicorn[standard]
+uvicorn[stanard]
