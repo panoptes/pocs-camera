@@ -36,6 +36,9 @@ class AppSettings(BaseModel):
         image_dir.mkdir(parents=True, exist_ok=True)
         return image_dir
 
+    class Config:
+        arbitrary_types_allowed = True
+
 
 app_settings = AppSettings()
 app = FastAPI()
