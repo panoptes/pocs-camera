@@ -8,10 +8,11 @@ from pathlib import Path
 from typing import List, Optional
 from datetime import datetime as dt
 
-import pigpio
 from pydantic import BaseSettings, BaseModel
 
 from panoptes.utils.time import CountdownTimer
+
+from gpio import Gpio
 
 
 class ShutterState(IntEnum):
@@ -42,15 +43,10 @@ class Camera:
     """
 
     def __init__(self, camera_settings: CameraSettings | None = None):
-        self.gpio = pigpio.pi()
         self.camera_settings = camera_settings or CameraSettings()
-
+        self.gpio = Gpio(self.camera_settings.pin)
         self.tether_process: subprocess.Popen | None = None
         self.exposure_timer: CountdownTimer | None = None
-
-        # Set GPIO pin to OUTPUT mode.
-        print(f'Setting {self.camera_settings.pin=} as OUTPUT')
-        self.gpio.set_mode(self.camera_settings.pin, pigpio.OUTPUT)
 
     @property
     def is_exposing(self) -> bool:
@@ -62,7 +58,7 @@ class Camera:
 
     @property
     def shutter_state(self):
-        return ShutterState(self.gpio.read(self.camera_settings.pin))
+        return ShutterState(self.gpio.state)
 
     async def take_picture(self, exptime: float = 1.0):
         """Takes a picture with the camera."""
@@ -76,11 +72,11 @@ class Camera:
 
     async def open_shutter(self):
         """Opens the shutter."""
-        self.gpio.write(self.camera_settings.pin, ShutterState.OPEN)
+        self.gpio.on()
 
     async def close_shutter(self):
         """Closes the shutter."""
-        self.gpio.write(self.camera_settings.pin, ShutterState.CLOSED)
+        self.gpio.off()
 
     async def download_recent(self, filename_pattern: str | None = None) -> List[Path]:
         """Download the most recent image from the camera."""
@@ -104,7 +100,7 @@ class Camera:
 
     async def run_gphoto2_command(self, command: GphotoCommand) -> dict:
         """Perform a gphoto2 command."""
-        full_command = self._build_gphoto2_command(command.arguments)
+        full_command = await self._build_gphoto2_command(command.arguments)
         print(f'Running gphoto2 {full_command=}')
 
         completed_proc = subprocess.run(full_command, capture_output=True, timeout=command.timeout)
@@ -127,13 +123,14 @@ class Camera:
 
         return command_output
 
-    async def start_gphoto_tether(self, sequence_dir: Path = Path('.'),
-                                  filename_pattern: str | None = None):
+    async def start_tether(self, sequence_dir: Path = Path('.'),
+                           filename_pattern: str | None = None):
         """Starts a gphoto2 tether and saves images to the given directory."""
         filename_pattern = filename_pattern or self.camera_settings.filename_pattern
         filename = f'{sequence_dir.as_posix()}/{filename_pattern}'
 
-        full_command = self._build_gphoto2_command(['--filename', filename, '--capture-tethered'])
+        full_command = await self._build_gphoto2_command(['--filename', filename,
+                                                          '--capture-tethered'])
 
         print(f'Starting gphoto2 tether for {self.camera_settings.name} using {filename=}')
         self.tether_process = subprocess.Popen(full_command)
@@ -141,7 +138,7 @@ class Camera:
         # The cameras need a second to connect.
         await sleep(1)
 
-    async def stop_gphoto_tether(self):
+    async def stop_tether(self):
         """Stop gphoto tether process."""
         print(f'Stopping gphoto2 tether for {self.camera_settings.name}')
         if self.tether_process is not None:
@@ -159,7 +156,7 @@ class Camera:
 
                 self.tether_process = None
 
-    def _build_gphoto2_command(self, command: List[str] | str) -> List[str]:
+    async def _build_gphoto2_command(self, command: List[str] | str) -> List[str]:
         full_command = [shutil.which('gphoto2'), '--port', self.camera_settings.port]
 
         # Turn command into a list if not one already.
@@ -169,6 +166,3 @@ class Camera:
         full_command.extend(command)
 
         return full_command
-
-    def __del__(self):
-        self.gpio.stop()

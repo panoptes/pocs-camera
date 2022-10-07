@@ -6,7 +6,7 @@ from anyio import sleep
 from fastapi import FastAPI
 from pydantic import BaseModel, DirectoryPath
 
-from camera import Camera, GphotoCommand, CameraSettings
+from camera import Camera, GphotoCommand
 
 
 class Observation(BaseModel):
@@ -51,7 +51,7 @@ async def startup_tasks():
 
 @app.on_event('shutdown')
 async def shutdown_tasks():
-    await app_settings.camera.stop_gphoto_tether()
+    await app_settings.camera.stop_tether()
 
 
 @app.post('/take-observation')
@@ -62,7 +62,7 @@ async def take_observation(observation: Observation):
     else:
         app_settings.is_observing = True
 
-    await app_settings.camera.start_gphoto_tether(app_settings.image_dir)
+    await app_settings.camera.start_tether(app_settings.image_dir)
 
     obs_start_time = dt.utcnow()
     for pic_num in range(observation.num_exposures):
@@ -80,7 +80,7 @@ async def take_observation(observation: Observation):
         print(f'Waiting for files from camera: {len(files)} of {observation.num_exposures}')
         await sleep(0.5)
 
-    await app_settings.camera.stop_gphoto_tether()
+    await app_settings.camera.stop_tether()
 
     print(f'Finished observation in {(dt.utcnow() - obs_start_time).seconds}s')
     app_settings.is_observing = False
