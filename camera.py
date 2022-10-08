@@ -41,8 +41,8 @@ class Camera:
     tether. The camera is triggered by a GPIO pin.
     """
 
-    def __init__(self, camera_settings: CameraSettings | None = None):
-        self.camera_settings = camera_settings or CameraSettings()
+    def __init__(self, camera_settings: CameraSettings | None = None, *args, **kwargs):
+        self.camera_settings = camera_settings or CameraSettings(*args, **kwargs)
         self.tether_process: subprocess.Popen | None = None
         self.exposure_timer: CountdownTimer | None = None
         self.gpio = Gpio(self.camera_settings.pin)
