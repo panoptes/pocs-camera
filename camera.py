@@ -42,7 +42,7 @@ class Camera:
     """
 
     def __init__(self, camera_settings: CameraSettings | None = None, *args, **kwargs):
-        self.camera_settings = camera_settings or CameraSettings(*args, **kwargs)
+        self.camera_settings = camera_settings or CameraSettings(**kwargs)
         self.tether_process: subprocess.Popen | None = None
         self.tethered_dir: Path | None = None
         self.exposure_timer: CountdownTimer | None = None
@@ -77,6 +77,17 @@ class Camera:
         await self.close_shutter()
         self.exposure_timer = None
         print(f'Finished exposing at {dt.utcnow()}.')
+
+    async def take_sequence(self,
+                            exptime: float,
+                            num_exposures: int = 1,
+                            readout_time: float = 0.0):
+        """Take a sequence of exposures."""
+        for i in range(num_exposures):
+            print(f'Exposure: {i + 1}/{num_exposures} Exptime: {exptime} Interval: {readout_time}')
+            await self.take_picture(exptime)
+            await sleep(readout_time)
+            print(f'Finished exposure: {i + 1}/{num_exposures}')
 
     async def run_gphoto2_command(self, command: GphotoCommand) -> dict:
         """Perform a gphoto2 command."""

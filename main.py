@@ -57,8 +57,8 @@ async def shutdown_tasks():
     await app_settings.camera.stop_tether()
 
 
-@app.post('/take-observation')
-async def take_observation(observation: Observation):
+@app.post('/take-sequence')
+async def take_sequence(observation: Observation):
     """Take a sequence of exposures."""
     if app_settings.is_observing:
         return dict(success=False, message=f'Observation already in progress')
@@ -68,12 +68,9 @@ async def take_observation(observation: Observation):
     await app_settings.camera.start_tether(app_settings.image_dir)
 
     obs_start_time = dt.utcnow()
-    for pic_num in range(observation.num_exposures):
-        # Take the image on each camera.
-        print(f'Taking photo {pic_num:03d} of {observation.num_exposures:03d}')
-        await app_settings.camera.take_picture(exptime=observation.exptime)
-        await sleep(observation.readout_time)
-        print(f'Done with {pic_num=:03d} of {observation.num_exposures:03d}')
+    await app_settings.camera.take_sequence(observation.exptime,
+                                            observation.num_exposures,
+                                            observation.readout_time)
 
     # Wait for all files to be present before stopping tether.
     while True:
