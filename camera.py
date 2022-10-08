@@ -21,10 +21,9 @@ class ShutterState(IntEnum):
 
 
 class CameraSettings(BaseSettings):
-    name: str
-    uid: str
     port: str
     pin: int
+    uid: str | None = None
     filename_pattern: str = '%Y%m%dT%H%M%S.cr2'
 
 
@@ -44,9 +43,9 @@ class Camera:
 
     def __init__(self, camera_settings: CameraSettings | None = None):
         self.camera_settings = camera_settings or CameraSettings()
-        self.gpio = Gpio(self.camera_settings.pin)
         self.tether_process: subprocess.Popen | None = None
         self.exposure_timer: CountdownTimer | None = None
+        self.gpio = Gpio(self.camera_settings.pin)
 
     @property
     def is_exposing(self) -> bool:
@@ -60,6 +59,14 @@ class Camera:
     def shutter_state(self):
         return ShutterState(self.gpio.state)
 
+    async def open_shutter(self):
+        """Opens the shutter."""
+        self.gpio.on()
+
+    async def close_shutter(self):
+        """Closes the shutter."""
+        self.gpio.off()
+
     async def take_picture(self, exptime: float = 1.0):
         """Takes a picture with the camera."""
         print(f'Exposing for {exptime=} seconds at {dt.utcnow()}.')
@@ -70,18 +77,10 @@ class Camera:
         self.exposure_timer = None
         print(f'Finished exposing at {dt.utcnow()}.')
 
-    async def open_shutter(self):
-        """Opens the shutter."""
-        self.gpio.on()
-
-    async def close_shutter(self):
-        """Closes the shutter."""
-        self.gpio.off()
-
     async def download_recent(self, filename_pattern: str | None = None) -> List[Path]:
         """Download the most recent image from the camera."""
         filename_pattern = filename_pattern or self.camera_settings.filename_pattern
-        print(f'Downloading recent image for {self.camera_settings.name} with {filename_pattern=}')
+        print(f'Downloading recent image for {self} with {filename_pattern=}')
         command = GphotoCommand(arguments=['--get-all-files',
                                            '--new',
                                            '--filename', filename_pattern
@@ -132,7 +131,7 @@ class Camera:
         full_command = await self._build_gphoto2_command(['--filename', filename,
                                                           '--capture-tethered'])
 
-        print(f'Starting gphoto2 tether for {self.camera_settings.name} using {filename=}')
+        print(f'Starting gphoto2 tether for {self} using {filename=}')
         self.tether_process = subprocess.Popen(full_command)
 
         # The cameras need a second to connect.
@@ -140,7 +139,7 @@ class Camera:
 
     async def stop_tether(self):
         """Stop gphoto tether process."""
-        print(f'Stopping gphoto2 tether for {self.camera_settings.name}')
+        print(f'Stopping gphoto2 tether for {self}')
         if self.tether_process is not None:
             outs = errs = ''
             try:
