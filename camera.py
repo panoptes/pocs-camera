@@ -44,7 +44,7 @@ class Camera:
     def __init__(self, camera_settings: CameraSettings | None = None, *args, **kwargs):
         self.camera_settings = camera_settings or CameraSettings(**kwargs)
         self.tether_process: subprocess.Popen | None = None
-        self.tethered_dir: Path | None = None
+        self.output_dir: Path | None = None
         self.exposure_timer: CountdownTimer | None = None
         self.gpio = Gpio(self.camera_settings.pin)
 
@@ -120,13 +120,13 @@ class Camera:
                            ):
         """Starts a gphoto2 tether and saves images to the given directory."""
         filename_pattern = filename_pattern or self.camera_settings.filename_pattern
-        self.tethered_dir = f'{output_dir.as_posix()}/{filename_pattern}'
-        print(f'Starting gphoto2 tether for {self} with {self.tethered_dir=}')
+        self.output_dir = f'{output_dir.as_posix()}/{filename_pattern}'
+        print(f'Starting gphoto2 tether for {self} with {self.output_dir=}')
 
-        full_command = await self._build_gphoto2_command(['--filename', self.tethered_dir,
+        full_command = await self._build_gphoto2_command(['--filename', self.output_dir,
                                                           '--capture-tethered'])
 
-        print(f'Starting gphoto2 tether for {self} using {self.tethered_dir=}')
+        print(f'Starting gphoto2 tether for {self} using {self.output_dir=}')
         self.tether_process = subprocess.Popen(full_command)
 
         # The cameras need a second to connect.
@@ -149,20 +149,26 @@ class Camera:
                     print(f'{errs=}')
 
                 self.tether_process = None
-                self.tethered_dir = None
+                self.output_dir = None
 
-    async def download_recent(self,
+    async def download_images(self,
                               output_dir: Path = Path('.'),
-                              filename_pattern: str | None = None) -> List[Path]:
+                              filename_pattern: str | None = None,
+                              only_new: bool = True,
+                              ) -> List[Path]:
         """Download the most recent image from the camera."""
         filename_pattern = filename_pattern or self.camera_settings.filename_pattern
-        self.tethered_dir = f'{output_dir.as_posix()}/{filename_pattern}'
-        print(f'Downloading recent image for {self} with {self.tethered_dir=}')
+        self.output_dir = f'{output_dir.as_posix()}/{filename_pattern}'
+        print(f'Downloading images for {self} with {self.output_dir=}')
 
-        command = GphotoCommand(arguments=['--get-all-files',
-                                           '--new',
-                                           '--filename', self.tethered_dir
-                                           ])
+        cmd_args = ['--get-all-files',
+                    '--recurse',
+                    '--filename', self.output_dir
+                    ]
+        if only_new:
+            cmd_args.append('--new')
+
+        command = GphotoCommand(arguments=cmd_args)
         command_output = await self.run_gphoto2_command(command)
 
         files = list()
@@ -173,7 +179,7 @@ class Camera:
                     print(f'Found recent image: {recent}')
                     files.append(Path(recent))
 
-        self.tethered_dir = None
+        self.output_dir = None
         return files
 
     async def _build_gphoto2_command(self, command: List[str] | str) -> List[str]:
