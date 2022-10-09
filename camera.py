@@ -89,7 +89,7 @@ class Camera:
             await sleep(readout_time)
             print(f'Finished exposure: {i + 1}/{num_exposures}')
 
-    async def run_gphoto2_command(self, command: GphotoCommand) -> dict:
+    async def run_command(self, command: GphotoCommand) -> dict:
         """Perform a gphoto2 command."""
         full_command = await self._build_gphoto2_command(command.arguments)
         print(f'Running gphoto2 {full_command=}')
@@ -168,8 +168,8 @@ class Camera:
         if only_new:
             cmd_args.append('--new')
 
-        command = GphotoCommand(arguments=cmd_args)
-        command_output = await self.run_gphoto2_command(command)
+        command = GphotoCommand(arguments=cmd_args, timeout=600)
+        command_output = await self.run_command(command)
 
         files = list()
         if command_output['success']:
@@ -181,6 +181,14 @@ class Camera:
 
         self.output_dir = None
         return files
+
+    async def delete_images(self):
+        """Delete all images from the camera."""
+        print(f'Deleting images for {self}')
+        command = GphotoCommand(arguments=['--delete-all-files --recurse'])
+        command_output = await self.run_command(command)
+
+        return command_output
 
     async def _build_gphoto2_command(self, command: List[str] | str) -> List[str]:
         full_command = [shutil.which('gphoto2'), '--port', self.camera_settings.port]

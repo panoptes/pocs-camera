@@ -100,11 +100,12 @@ async def take_picture(exptime: float = 1.0):
 @app.post('/download-recent')
 async def download_recent(filename_pattern: str | None = None):
     """Download the most recent image from the camera."""
-    files = await app_settings.camera.download_recent(filename_pattern)
+    files = await app_settings.camera.download_images(filename_pattern=filename_pattern,
+                                                      only_new=True)
     return dict(success=True, message=f'Download complete', files=files)
 
 
 @app.post('/command')
 async def gphoto2_command(command: GphotoCommand):
     """Run a gphoto2 command."""
-    return await app_settings.camera.run_gphoto2_command(command)
+    return await app_settings.camera.run_command(command)
