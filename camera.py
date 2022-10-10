@@ -1,12 +1,11 @@
-import asyncio
 import shutil
 import subprocess
-from asyncio import sleep
 from contextlib import suppress
 from enum import IntEnum
 from pathlib import Path
 from typing import List, Optional
 from datetime import datetime as dt
+from time import sleep
 
 from pydantic import BaseSettings, BaseModel
 
@@ -60,38 +59,38 @@ class Camera:
     def shutter_state(self):
         return ShutterState(self.gpio.state)
 
-    async def open_shutter(self):
+    def open_shutter(self):
         """Opens the shutter."""
         self.gpio.on()
 
-    async def close_shutter(self):
+    def close_shutter(self):
         """Closes the shutter."""
         self.gpio.off()
 
-    async def take_picture(self, exptime: float = 1.0):
+    def take_picture(self, exptime: float = 1.0):
         """Takes a picture with the camera."""
         print(f'Exposing for {exptime=} seconds at {dt.utcnow()}.')
         self.exposure_timer = CountdownTimer(exptime)
-        await self.open_shutter()
-        await asyncio.sleep(exptime)
-        await self.close_shutter()
+        self.open_shutter()
+        sleep(exptime)
+        self.close_shutter()
         self.exposure_timer = None
         print(f'Finished exposing at {dt.utcnow()}.')
 
-    async def take_sequence(self,
-                            exptime: float,
-                            num_exposures: int = 1,
-                            readout_time: float = 0.0):
+    def take_sequence(self,
+                      exptime: float,
+                      num_exposures: int = 1,
+                      readout_time: float = 0.0):
         """Take a sequence of exposures."""
         for i in range(num_exposures):
             print(f'Exposure: {i + 1}/{num_exposures} Exptime: {exptime} Interval: {readout_time}')
-            await self.take_picture(exptime)
-            await sleep(readout_time)
+            self.take_picture(exptime)
+            sleep(readout_time)
             print(f'Finished exposure: {i + 1}/{num_exposures}')
 
-    async def run_command(self, command: GphotoCommand) -> dict:
+    def run_command(self, command: GphotoCommand) -> dict:
         """Perform a gphoto2 command."""
-        full_command = await self._build_gphoto2_command(command.arguments)
+        full_command = self._build_gphoto2_command(command.arguments)
         print(f'Running gphoto2 {full_command=}')
 
         completed_proc = subprocess.run(full_command, capture_output=True, timeout=command.timeout)
@@ -114,25 +113,25 @@ class Camera:
 
         return command_output
 
-    async def start_tether(self,
-                           output_dir: Path = Path('.'),
-                           filename_pattern: str | None = None
-                           ):
+    def start_tether(self,
+                     output_dir: Path = Path('.'),
+                     filename_pattern: str | None = None
+                     ):
         """Starts a gphoto2 tether and saves images to the given directory."""
         filename_pattern = filename_pattern or self.camera_settings.filename_pattern
         self.output_dir = f'{output_dir.as_posix()}/{filename_pattern}'
         print(f'Starting gphoto2 tether for {self} with {self.output_dir=}')
 
-        full_command = await self._build_gphoto2_command(['--filename', self.output_dir,
-                                                          '--capture-tethered'])
+        full_command = self._build_gphoto2_command(['--filename', self.output_dir,
+                                                    '--capture-tethered'])
 
         print(f'Starting gphoto2 tether for {self} using {self.output_dir=}')
         self.tether_process = subprocess.Popen(full_command)
 
         # The cameras need a second to connect.
-        await sleep(1)
+        sleep(1)
 
-    async def stop_tether(self):
+    def stop_tether(self):
         """Stop gphoto tether process."""
         print(f'Stopping gphoto2 tether for {self}')
         if self.tether_process is not None:
@@ -151,11 +150,11 @@ class Camera:
                 self.tether_process = None
                 self.output_dir = None
 
-    async def download_images(self,
-                              output_dir: Path = Path('.'),
-                              filename_pattern: str | None = None,
-                              only_new: bool = True,
-                              ) -> List[Path]:
+    def download_images(self,
+                        output_dir: Path = Path('.'),
+                        filename_pattern: str | None = None,
+                        only_new: bool = True,
+                        ) -> List[Path]:
         """Download the most recent image from the camera."""
         filename_pattern = filename_pattern or self.camera_settings.filename_pattern
         self.output_dir = f'{output_dir.as_posix()}/{filename_pattern}'
@@ -169,7 +168,7 @@ class Camera:
             cmd_args.append('--new')
 
         command = GphotoCommand(arguments=cmd_args, timeout=600)
-        command_output = await self.run_command(command)
+        command_output = self.run_command(command)
 
         files = list()
         if command_output['success']:
@@ -182,15 +181,15 @@ class Camera:
         self.output_dir = None
         return files
 
-    async def delete_images(self):
+    def delete_images(self):
         """Delete all images from the camera."""
         print(f'Deleting images for {self}')
         command = GphotoCommand(arguments=['--delete-all-files --recurse'])
-        command_output = await self.run_command(command)
+        command_output = self.run_command(command)
 
         return command_output
 
-    async def _build_gphoto2_command(self, command: List[str] | str) -> List[str]:
+    def _build_gphoto2_command(self, command: List[str] | str) -> List[str]:
         full_command = [shutil.which('gphoto2'), '--port', self.camera_settings.port]
 
         # Turn command into a list if not one already.

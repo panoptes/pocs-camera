@@ -2,7 +2,7 @@ from datetime import datetime as dt
 from pathlib import Path
 from typing import List
 
-from anyio import sleep
+from time import sleep
 from fastapi import FastAPI
 from pydantic import BaseModel, DirectoryPath
 
@@ -45,7 +45,7 @@ app = FastAPI()
 
 
 @app.on_event('startup')
-async def startup_tasks():
+def startup_tasks():
     """Set up the camera. """
     print('Starting up...')
     app_settings.camera = Camera()
@@ -53,24 +53,24 @@ async def startup_tasks():
 
 
 @app.on_event('shutdown')
-async def shutdown_tasks():
-    await app_settings.camera.stop_tether()
+def shutdown_tasks():
+    app_settings.camera.stop_tether()
 
 
 @app.post('/take-sequence')
-async def take_sequence(observation: Observation):
+def take_sequence(observation: Observation):
     """Take a sequence of exposures."""
     if app_settings.is_observing:
         return dict(success=False, message=f'Observation already in progress')
     else:
         app_settings.is_observing = True
 
-    await app_settings.camera.start_tether(app_settings.image_dir)
+    app_settings.camera.start_tether(app_settings.image_dir)
 
     obs_start_time = dt.utcnow()
-    await app_settings.camera.take_sequence(observation.exptime,
-                                            observation.num_exposures,
-                                            observation.readout_time)
+    app_settings.camera.take_sequence(observation.exptime,
+                                      observation.num_exposures,
+                                      observation.readout_time)
 
     # Wait for all files to be present before stopping tether.
     while True:
@@ -78,9 +78,9 @@ async def take_sequence(observation: Observation):
         if len(files) == observation.num_exposures:
             break
         print(f'Waiting for files from camera: {len(files)} of {observation.num_exposures}')
-        await sleep(0.5)
+        sleep(0.5)
 
-    await app_settings.camera.stop_tether()
+    app_settings.camera.stop_tether()
 
     print(f'Finished observation in {(dt.utcnow() - obs_start_time).seconds}s')
     app_settings.is_observing = False
@@ -88,24 +88,24 @@ async def take_sequence(observation: Observation):
 
 
 @app.post('/take-picture')
-async def take_picture(exptime: float = 1.0):
+def take_picture(exptime: float = 1.0):
     """Take a picture with the camera.
 
     This will not start the gphoto2 tether so will leave images on the camera.
     """
-    await app_settings.camera.take_picture(exptime=exptime)
+    app_settings.camera.take_picture(exptime=exptime)
     return dict(success=True, message=f'Exposure complete')
 
 
 @app.post('/download-recent')
-async def download_recent(filename_pattern: str | None = None):
+def download_recent(filename_pattern: str | None = None):
     """Download the most recent image from the camera."""
-    files = await app_settings.camera.download_images(filename_pattern=filename_pattern,
-                                                      only_new=True)
+    files = app_settings.camera.download_images(filename_pattern=filename_pattern,
+                                                only_new=True)
     return dict(success=True, message=f'Download complete', files=files)
 
 
 @app.post('/command')
-async def gphoto2_command(command: GphotoCommand):
+def gphoto2_command(command: GphotoCommand):
     """Run a gphoto2 command."""
-    return await app_settings.camera.run_command(command)
+    return app_settings.camera.run_command(command)
