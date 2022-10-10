@@ -1,6 +1,10 @@
 from enum import IntEnum
 
-import lgpio
+try:
+    import lgpio
+except ImportError:
+    raise ImportError('lgpio is not installed. '
+                      'Please install it with `sudo apt install python3-lgpio`')
 
 
 class PinState(IntEnum):
