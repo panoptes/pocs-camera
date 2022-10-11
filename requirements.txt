@@ -2,4 +2,4 @@ anyio
 fastapi
 panoptes-utils
 pydantic
-uvicorn[stanard]
+uvicorn[standard]

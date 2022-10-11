@@ -11,7 +11,7 @@ from pydantic import BaseSettings, BaseModel
 
 from panoptes.utils.time import CountdownTimer
 
-from gpio import Gpio
+import logging
 
 
 class ShutterState(IntEnum):
@@ -21,7 +21,6 @@ class ShutterState(IntEnum):
 
 class CameraSettings(BaseSettings):
     port: str
-    pin: int
     uid: str | None = None
     filename_pattern: str = '%Y%m%dT%H%M%S.cr2'
 
@@ -45,7 +44,8 @@ class Camera:
         self.tether_process: subprocess.Popen | None = None
         self.output_dir: Path | None = None
         self.exposure_timer: CountdownTimer | None = None
-        self.gpio = Gpio(self.camera_settings.pin)
+
+        self._shutter_state: ShutterState = ShutterState.CLOSED
 
     @property
     def is_exposing(self) -> bool:
@@ -57,41 +57,64 @@ class Camera:
 
     @property
     def shutter_state(self):
-        return ShutterState(self.gpio.state)
+        return self._shutter_state
 
     def open_shutter(self):
         """Opens the shutter."""
-        self.gpio.on()
+        if self.is_tethered:
+            raise RuntimeError('Cannot open shutter via gphoto2 while tethered.')
+
+        if self.is_exposing:
+            raise RuntimeError('Cannot open shutter while exposing.')
+
+        self._shutter_state = ShutterState.OPEN
+        self.run_command(GphotoCommand(arguments=['--set-config', 'eosremoterelease=Immediate']))
 
     def close_shutter(self):
         """Closes the shutter."""
-        self.gpio.off()
+        if self.is_tethered:
+            raise RuntimeError('Cannot close shutter via gphoto2 while tethered.')
+
+        if not self.is_exposing:
+            # Warn but don't stop.
+            logging.warning('Cannot close shutter while not exposing, will try anyway.')
+
+        self.run_command(GphotoCommand(arguments=['--set-config', 'eosremoterelease=Off']))
+        self._shutter_state = ShutterState.CLOSED
 
     def take_picture(self, exptime: float = 1.0):
-        """Takes a picture with the camera."""
-        print(f'Exposing for {exptime=} seconds at {dt.utcnow()}.')
+        """Takes a picture with the camera.
+
+        Note that this is a blocking call.
+        """
+        logging.info(f'Exposing for {exptime=} seconds at {dt.utcnow()}.')
         self.exposure_timer = CountdownTimer(exptime)
         self.open_shutter()
         sleep(exptime)
         self.close_shutter()
         self.exposure_timer = None
-        print(f'Finished exposing at {dt.utcnow()}.')
+        logging.info(f'Finished exposing at {dt.utcnow()}.')
 
     def take_sequence(self,
                       exptime: float,
                       num_exposures: int = 1,
                       readout_time: float = 0.0):
-        """Take a sequence of exposures."""
-        for i in range(num_exposures):
-            print(f'Exposure: {i + 1}/{num_exposures} Exptime: {exptime} Interval: {readout_time}')
+        """Take a sequence of exposures.
+
+        Note that calling this method will block until the sequence is complete.
+        """
+        for pic_num in range(num_exposures):
+            logging.info(f'Starting {pic_num + 1:03d}/{num_exposures:03d} '
+                         f'Exptime: {exptime} '
+                         f'Interval: {readout_time}')
             self.take_picture(exptime)
             sleep(readout_time)
-            print(f'Finished exposure: {i + 1}/{num_exposures}')
+            logging.info(f'Finished exposure: {pic_num + 1:03d}/{num_exposures:03d}')
 
     def run_command(self, command: GphotoCommand) -> dict:
         """Perform a gphoto2 command."""
         full_command = self._build_gphoto2_command(command.arguments)
-        print(f'Running gphoto2 {full_command=}')
+        logging.info(f'Running gphoto2 {full_command=}')
 
         completed_proc = subprocess.run(full_command, capture_output=True, timeout=command.timeout)
 
@@ -100,7 +123,7 @@ class Camera:
             for line in output:
                 if line.startswith('Current: '):
                     output = line.replace('Current: ', '')
-                    print(f'Found property: {output}')
+                    logging.debug(f'Found property: {output}')
                     break
 
         # Populate return items.
@@ -114,18 +137,17 @@ class Camera:
         return command_output
 
     def start_tether(self,
-                     output_dir: Path = Path('.'),
+                     output_dir: Path = Path('..'),
                      filename_pattern: str | None = None
                      ):
         """Starts a gphoto2 tether and saves images to the given directory."""
         filename_pattern = filename_pattern or self.camera_settings.filename_pattern
         self.output_dir = f'{output_dir.as_posix()}/{filename_pattern}'
-        print(f'Starting gphoto2 tether for {self} with {self.output_dir=}')
 
         full_command = self._build_gphoto2_command(['--filename', self.output_dir,
                                                     '--capture-tethered'])
 
-        print(f'Starting gphoto2 tether for {self} using {self.output_dir=}')
+        logging.info(f'Starting gphoto2 tether for {self} using {self.output_dir=}')
         self.tether_process = subprocess.Popen(full_command)
 
         # The cameras need a second to connect.
@@ -133,7 +155,7 @@ class Camera:
 
     def stop_tether(self):
         """Stop gphoto tether process."""
-        print(f'Stopping gphoto2 tether for {self}')
+        logging.info(f'Stopping gphoto2 tether for {self}')
         if self.tether_process is not None:
             outs = errs = ''
             try:
@@ -143,22 +165,22 @@ class Camera:
                 outs, errs = self.tether_process.communicate()
             finally:
                 if outs and outs > '':
-                    print(f'{outs=}')
+                    logging.info(f'{outs=}')
                 if errs and errs > '':
-                    print(f'{errs=}')
+                    logging.info(f'{errs=}')
 
                 self.tether_process = None
                 self.output_dir = None
 
     def download_images(self,
-                        output_dir: Path = Path('.'),
+                        output_dir: Path = Path('..'),
                         filename_pattern: str | None = None,
                         only_new: bool = True,
                         ) -> List[Path]:
         """Download the most recent image from the camera."""
         filename_pattern = filename_pattern or self.camera_settings.filename_pattern
         self.output_dir = f'{output_dir.as_posix()}/{filename_pattern}'
-        print(f'Downloading images for {self} with {self.output_dir=}')
+        logging.info(f'Downloading images for {self} with {self.output_dir=}')
 
         cmd_args = ['--get-all-files',
                     '--recurse',
@@ -175,7 +197,7 @@ class Camera:
             for line in command_output['output']:
                 if line.startswith('Saving file as '):
                     recent = line.replace('Saving file as ', '')
-                    print(f'Found recent image: {recent}')
+                    logging.debug(f'Found recent image: {recent}')
                     files.append(Path(recent))
 
         self.output_dir = None
@@ -183,7 +205,7 @@ class Camera:
 
     def delete_images(self):
         """Delete all images from the camera."""
-        print(f'Deleting images for {self}')
+        logging.info(f'Deleting images for {self}')
         command = GphotoCommand(arguments=['--delete-all-files --recurse'])
         command_output = self.run_command(command)
 

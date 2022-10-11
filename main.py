@@ -6,7 +6,8 @@ from time import sleep
 from fastapi import FastAPI
 from pydantic import BaseModel, DirectoryPath
 
-from camera import Camera, GphotoCommand
+from hardware.camera import Camera, GphotoCommand
+from hardware.gpio_shutter_camera import GpioShutterCamera as Camera
 
 
 class Observation(BaseModel):
