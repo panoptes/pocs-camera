@@ -1,112 +1,31 @@
-from datetime import datetime as dt
-from pathlib import Path
-from typing import List
+from celery import Celery
 
-from time import sleep
-from fastapi import FastAPI
-from pydantic import BaseModel, DirectoryPath
-
-from hardware.camera import Camera, GphotoCommand
-from hardware.gpio_shutter_camera import GpioShutterCamera as Camera
+from pydantic import BaseSettings
+from panoptes.utils.library import load_module
 
 
-class Observation(BaseModel):
-    sequence_id: str
-    exptime: List[float] | float
-    field_name: str = ''
-    num_exposures: int = 1
-    readout_time: float = 0.25
-
-    @property
-    def image_dir(self) -> Path:
-        return Path(self.field_name) / self.sequence_id.replace('_', '/')
-
-
-class AppSettings(BaseModel):
-    camera: Camera | None = None
-    base_dir: DirectoryPath = Path('.')
-    is_observing: bool = False
-    observation: Observation | None = None
-
-    @property
-    def image_dir(self) -> Path:
-        image_dir = self.base_dir
-        if self.observation is not None:
-            image_dir = image_dir / self.observation.image_dir
-
-        image_dir.mkdir(parents=True, exist_ok=True)
-        return image_dir
+class Settings(BaseSettings):
+    name: str
+    port: str
+    pin: int
+    camera_class: str = "camera.gphoto2.Camera"
 
     class Config:
-        arbitrary_types_allowed = True
+        env_file = '.env'
+        env_prefix = 'pocs_'
 
 
-app_settings = AppSettings()
-app = FastAPI()
+# Create settings from env vars.
+app_settings = Settings()
+cam = load_module(app_settings.camera_class)(**app_settings.dict())
+
+# Start celery.
+app = Celery()
+app.config_from_object('celeryconfig')
 
 
-@app.on_event('startup')
-def startup_tasks():
-    """Set up the camera. """
-    print('Starting up...')
-    app_settings.camera = Camera()
-    print(f'{app_settings=}')
-
-
-@app.on_event('shutdown')
-def shutdown_tasks():
-    app_settings.camera.stop_tether()
-
-
-@app.post('/take-sequence')
-def take_sequence(observation: Observation):
-    """Take a sequence of exposures."""
-    if app_settings.is_observing:
-        return dict(success=False, message=f'Observation already in progress')
-    else:
-        app_settings.is_observing = True
-
-    app_settings.camera.start_tether(app_settings.image_dir)
-
-    obs_start_time = dt.utcnow()
-    app_settings.camera.take_sequence(observation.exptime,
-                                      observation.num_exposures,
-                                      observation.readout_time)
-
-    # Wait for all files to be present before stopping tether.
-    while True:
-        files = list(app_settings.image_dir.glob('*.cr2'))
-        if len(files) == observation.num_exposures:
-            break
-        print(f'Waiting for files from camera: {len(files)} of {observation.num_exposures}')
-        sleep(0.5)
-
-    app_settings.camera.stop_tether()
-
-    print(f'Finished observation in {(dt.utcnow() - obs_start_time).seconds}s')
-    app_settings.is_observing = False
-    return dict(success=True, message=f'Observation complete', files=files)
-
-
-@app.post('/take-picture')
-def take_picture(exptime: float = 1.0):
-    """Take a picture with the camera.
-
-    This will not start the gphoto2 tether so will leave images on the camera.
-    """
-    app_settings.camera.take_picture(exptime=exptime)
-    return dict(success=True, message=f'Exposure complete')
-
-
-@app.post('/download-recent')
-def download_recent(filename_pattern: str | None = None):
-    """Download the most recent image from the camera."""
-    files = app_settings.camera.download_images(filename_pattern=filename_pattern,
-                                                only_new=True)
-    return dict(success=True, message=f'Download complete', files=files)
-
-
-@app.post('/command')
-def gphoto2_command(command: GphotoCommand):
-    """Run a gphoto2 command."""
-    return app_settings.camera.run_command(command)
+@app.task(name='camera.status', bind=True)
+def status(self):
+    """Get the status of the camera."""
+    self.update_state(state='PROGRESS', meta={'status': str(cam)})
+    return dict(status=str(cam))
