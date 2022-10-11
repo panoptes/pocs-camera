@@ -1,5 +1,5 @@
-from .gphoto2 import Camera as CameraClass
-from .gphoto2 import CameraSettings, ShutterState
+from gphoto2 import Camera as CameraClass
+from gphoto2 import CameraSettings, ShutterState
 import logging
 from enum import IntEnum
 

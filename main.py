@@ -1,14 +1,14 @@
 from celery import Celery
 
 from pydantic import BaseSettings
-from panoptes.utils.library import load_module
+
+from camera.gpio import Camera
 
 
 class Settings(BaseSettings):
     name: str
     port: str
     pin: int
-    camera_class: str = "camera.gphoto2.Camera"
 
     class Config:
         env_file = '.env'
@@ -17,11 +17,7 @@ class Settings(BaseSettings):
 
 # Create settings from env vars.
 app_settings = Settings()
-cam = load_module(app_settings.camera_class)(
-    name=app_settings.name,
-    port=app_settings.port,
-    pin=app_settings.pin,
-)
+cam = Camera(name=app_settings.name, port=app_settings.port, pin=app_settings.pin)
 
 # Start celery.
 app = Celery()
