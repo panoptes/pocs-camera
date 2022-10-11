@@ -11,10 +11,6 @@ except ImportError:
                     'Please install it with `sudo apt install python3-lgpio`')
 
 
-class GpioShutterCameraSettings(CameraSettings):
-    pin: int
-
-
 class PinState(IntEnum):
     OFF = 0
     ON = 1
@@ -23,9 +19,10 @@ class PinState(IntEnum):
 class Camera(CameraClass):
     """A camera that is controlled by a GPIO pin."""
 
-    def __init__(self, camera_settings: GpioShutterCameraSettings | None = None, *args, **kwargs):
+    def __init__(self, pin: int, camera_settings: CameraSettings | None = None, *args, **kwargs):
         super().__init__(camera_settings, *args, **kwargs)
-        self.gpio = Gpio(self.camera_settings.pin)
+        self.pin = pin
+        self.gpio = Gpio(self.pin)
 
     @property
     def shutter_state(self):
@@ -33,12 +30,12 @@ class Camera(CameraClass):
 
     def open_shutter(self):
         """Opens the shutter."""
-        logging.debug(f'Opening shutter via {self.camera_settings.pin}.')
+        logging.debug(f'Opening shutter via {self.pin}.')
         self.gpio.on()
 
     def close_shutter(self):
         """Closes the shutter."""
-        logging.debug(f'Closing shutter via {self.camera_settings.pin}.')
+        logging.debug(f'Closing shutter via {self.pin}.')
         self.gpio.off()
 
 
