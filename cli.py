@@ -14,3 +14,7 @@ def status(command_list):
     """Get camera status."""
     task = celery_app.send_task('camera.status')
     return celery_app.AsyncResult(task.id)
+
+
+if __name__ == '__main__':
+    typer_app()
