@@ -1,17 +1,45 @@
+from .gphoto2 import Camera as CameraClass
+from .gphoto2 import CameraSettings, ShutterState
 import logging
-import warnings
 from enum import IntEnum
 
 try:
     import lgpio
 except ImportError:
-    warnings.warn('lgpio is not installed. '
-                  'Please install it with `sudo apt install python3-lgpio`')
+    lgpio = None
+    logging.warning('lgpio is not installed. '
+                    'Please install it with `sudo apt install python3-lgpio`')
+
+
+class GpioShutterCameraSettings(CameraSettings):
+    pin: int
 
 
 class PinState(IntEnum):
     OFF = 0
     ON = 1
+
+
+class Camera(CameraClass):
+    """A camera that is controlled by a GPIO pin."""
+
+    def __init__(self, camera_settings: GpioShutterCameraSettings | None = None, *args, **kwargs):
+        super().__init__(camera_settings, *args, **kwargs)
+        self.gpio = Gpio(self.camera_settings.pin)
+
+    @property
+    def shutter_state(self):
+        return ShutterState(self.gpio.state)
+
+    def open_shutter(self):
+        """Opens the shutter."""
+        logging.debug(f'Opening shutter via {self.camera_settings.pin}.')
+        self.gpio.on()
+
+    def close_shutter(self):
+        """Closes the shutter."""
+        logging.debug(f'Closing shutter via {self.camera_settings.pin}.')
+        self.gpio.off()
 
 
 class Gpio:
@@ -31,6 +59,13 @@ class Gpio:
         """Turns off the GPIO pin."""
         logging.debug(f'Turning off GPIO pin {self.pin}.')
         lgpio.gpio_write(self.h, self.pin, PinState.OFF)
+
+    def toggle(self):
+        """Toggles the state of the GPIO pin."""
+        old_state = self.state
+        new_state = PinState(not old_state)
+        logging.debug(f'Toggling GPIO pin {self.pin} from {old_state.name} to {new_state.name}.')
+        self.state = new_state
 
     @property
     def state(self):

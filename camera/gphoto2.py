@@ -22,6 +22,7 @@ class ShutterState(IntEnum):
 class CameraSettings(BaseSettings):
     port: str
     uid: str | None = None
+    name: str = 'Camera'
     filename_pattern: str = '%Y%m%dT%H%M%S.cr2'
 
 
@@ -46,6 +47,11 @@ class Camera:
         self.exposure_timer: CountdownTimer | None = None
 
         self._shutter_state: ShutterState = ShutterState.CLOSED
+
+    @property
+    def name(self) -> str:
+        """Returns the name of the camera."""
+        return self.camera_settings.name
 
     @property
     def is_exposing(self) -> bool:
@@ -223,7 +229,7 @@ class Camera:
         return full_command
 
     def __str__(self):
-        msg = f'Camera {self.camera_settings.uid} on {self.camera_settings.port}'
+        msg = f'Camera {self.name} {self.camera_settings.uid} on {self.camera_settings.port}'
         if self.is_exposing:
             msg += f'  [EXPOSING: {self.exposure_timer}]'
         if self.is_tethered:
