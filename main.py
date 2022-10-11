@@ -17,7 +17,11 @@ class Settings(BaseSettings):
 
 # Create settings from env vars.
 app_settings = Settings()
-cam = load_module(app_settings.camera_class)(**app_settings.dict())
+cam = load_module(app_settings.camera_class)(
+    name=app_settings.name,
+    port=app_settings.port,
+    pin=app_settings.pin,
+)
 
 # Start celery.
 app = Celery()
