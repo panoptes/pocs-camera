@@ -1,4 +1,3 @@
-anyio
 fastapi
 panoptes-utils
 pydantic
