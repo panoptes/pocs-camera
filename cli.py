@@ -9,7 +9,7 @@ celery_app.config_from_object('celeryconfig')
 typer_app = typer.Typer()
 
 
-@typer_app.command()
+@typer_app.command('status')
 def status():
     """Get camera status."""
     task = celery_app.send_task('camera.status')
