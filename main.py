@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     name: str
     port: str
     pin: int
-    files: List[Path] = list()
+    files: List[str] = list()
 
     class Config:
         env_file = '.env'
