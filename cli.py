@@ -17,5 +17,20 @@ def status():
     typer.echo(f'Result: {result}')
 
 
+@typer_app.command('start-tether')
+def start_tether():
+    """Start camera tether."""
+    task = celery_app.send_task('camera.start_tether')
+    typer.echo(f'Task: {task.id=}')
+
+
+@typer_app.command('stop-tether')
+def stop_tether():
+    """Stop camera tether."""
+    task = celery_app.send_task('camera.stop_tether')
+    typer.echo(f'Stopping tether: {task.id=}')
+    result = task.get(timeout=20)
+
+
 if __name__ == '__main__':
     typer_app()

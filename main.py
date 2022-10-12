@@ -27,5 +27,21 @@ app.config_from_object('celeryconfig')
 @app.task(name='camera.status', bind=True)
 def status(self):
     """Get the status of the camera."""
-    self.update_state(state='PROGRESS', meta={'status': str(cam)})
+    self.update_state(state='STATUS', meta={'status': str(cam)})
+    return dict(status=str(cam))
+
+
+@app.task(name='camera.start_tether', bind=True)
+def start_tether(self):
+    """Start the camera tether."""
+    cam.start_tether()
+    self.update_state(state='TETHERED', meta={'status': str(cam)})
+    return dict(status=str(cam))
+
+
+@app.task(name='camera.stop_tether', bind=True)
+def stop_tether(self):
+    """Stop the camera tether."""
+    cam.stop_tether()
+    self.update_state(state='UNTETHERED', meta={'status': str(cam)})
     return dict(status=str(cam))
