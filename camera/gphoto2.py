@@ -148,7 +148,7 @@ class Camera:
                      ):
         """Starts a gphoto2 tether and saves images to the given directory."""
         filename_pattern = filename_pattern or self.camera_settings.filename_pattern
-        self.output_dir = f'{output_dir.as_posix()}/{filename_pattern}'
+        self.output_dir = f'{Path(output_dir).as_posix()}/{filename_pattern}'
 
         full_command = self._build_gphoto2_command(['--filename', self.output_dir,
                                                     '--capture-tethered'])
