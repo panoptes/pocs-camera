@@ -36,6 +36,11 @@ class Camera(CameraClass):
             return 0
         return perf_counter() - self._exposure_start_time
 
+    @exposure_timer.setter
+    def exposure_timer(self, value: float):
+        """This is a no-op, but is required for compatibility with the Camera class."""
+        self._exposure_start_time = None
+
     @property
     def shutter_state(self):
         return ShutterState(self.gpio.state)
