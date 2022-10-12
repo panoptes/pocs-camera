@@ -54,5 +54,13 @@ def stop_tether(camera: str = typer.Argument(..., help='The name of the camera.'
     typer.echo(f'Result: {result}')
 
 
+@typer_app.command('file-list')
+def file_list(camera: str = typer.Argument(..., help='The name of the camera.')):
+    """Get the file list from the camera."""
+    task = celery_app.send_task('camera.file_list', queue=camera)
+    result = task.get(timeout=20)
+    typer.echo(f'Result: {result}')
+
+
 if __name__ == '__main__':
     typer_app()
