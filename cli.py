@@ -40,7 +40,7 @@ def start_tether(camera: str = typer.Argument(..., help='The name of the camera.
                  output_dir: Path = typer.Argument(..., help='The output directory.')):
     """Start camera tether."""
     task = celery_app.send_task('camera.start_tether',
-                                kwargs=dict(output_dir=output_dir),
+                                kwargs=dict(output_dir=output_dir.as_posix()),
                                 queue=camera)
     typer.echo(f'Task: {task.id=}')
 
