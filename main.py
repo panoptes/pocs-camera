@@ -1,4 +1,6 @@
+import re
 from pathlib import Path
+from typing import List
 
 from celery import Celery
 
@@ -6,11 +8,14 @@ from pydantic import BaseSettings
 
 from camera.gpio import Camera
 
+file_save_re = re.compile(r'Saving file as (.*)')
+
 
 class Settings(BaseSettings):
     name: str
     port: str
     pin: int
+    files: List[Path] = list()
 
     class Config:
         env_file = '.env'
@@ -54,8 +59,8 @@ def close_shutter(self):
 @app.task(name='camera.start_tether', bind=True)
 def start_tether(self, output_dir: str):
     """Start the camera tether."""
-    cam.start_tether(output_dir=output_dir)
-    self.update_state(state='TETHERED', meta={'status': str(cam)})
+    cam.start_tether(output_dir=Path(output_dir))
+    self.update_state(state='TETHERED', meta={'status': str(cam), 'output_dir': output_dir})
     return dict(status=str(cam))
 
 
@@ -64,4 +69,19 @@ def stop_tether(self):
     """Stop the camera tether."""
     cam.stop_tether()
     self.update_state(state='UNTETHERED', meta={'status': str(cam)})
-    return dict(status=str(cam))
+
+    tethered_files = app_settings.files.copy()
+    app_settings.files.clear()
+    return dict(status=str(cam), files=tethered_files)
+
+
+@app.task(name='camera.file_list', bind=True)
+def file_list(self):
+    """Get the file list from the camera."""
+    if cam.is_tethered:
+        for line in cam.tether_process.stdout.readlines():
+            file_match = file_save_re.match(line)
+            if file_match is not None:
+                app_settings.files.append(file_match.group(1).strip())
+
+    return dict(files=app_settings.files)

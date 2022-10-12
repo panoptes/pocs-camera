@@ -154,7 +154,11 @@ class Camera:
                                                     '--capture-tethered'])
 
         logging.info(f'Starting gphoto2 tether for {self} using {self.output_dir=}')
-        self.tether_process = subprocess.Popen(full_command)
+        self.tether_process = subprocess.Popen(full_command,
+                                               stdout=subprocess.PIPE,
+                                               stderr=subprocess.PIPE,
+                                               universal_newlines=True
+                                               )
 
         # The cameras need a second to connect.
         sleep(1)
