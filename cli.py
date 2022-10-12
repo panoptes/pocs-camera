@@ -10,10 +10,11 @@ typer_app = typer.Typer()
 
 
 @typer_app.command()
-def status(command_list):
+def status():
     """Get camera status."""
     task = celery_app.send_task('camera.status')
-    return celery_app.AsyncResult(task.id)
+    result = task.get(timeout=20)
+    typer.echo(f'Result: {result}')
 
 
 if __name__ == '__main__':
