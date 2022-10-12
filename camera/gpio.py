@@ -2,6 +2,7 @@ from .gphoto2 import Camera as CameraClass
 from .gphoto2 import CameraSettings, ShutterState
 import logging
 from enum import IntEnum
+from time import perf_counter
 
 try:
     import lgpio
@@ -23,6 +24,17 @@ class Camera(CameraClass):
         super().__init__(camera_settings, *args, **kwargs)
         self.pin = pin
         self.gpio = Gpio(self.pin)
+        self._exposure_start_time = None
+
+    @property
+    def is_exposing(self) -> bool:
+        return self.gpio.state == PinState.ON
+
+    @property
+    def exposure_timer(self) -> float:
+        if self._exposure_start_time is None:
+            return 0
+        return perf_counter() - self._exposure_start_time
 
     @property
     def shutter_state(self):
@@ -32,11 +44,13 @@ class Camera(CameraClass):
         """Opens the shutter."""
         logging.debug(f'Opening shutter via {self.pin}.')
         self.gpio.on()
+        self._exposure_start_time = perf_counter()
 
     def close_shutter(self):
         """Closes the shutter."""
         logging.debug(f'Closing shutter via {self.pin}.')
         self.gpio.off()
+        self._exposure_start_time = None
 
 
 class Gpio:
