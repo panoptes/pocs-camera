@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from celery import Celery
 
 from pydantic import BaseSettings
@@ -50,9 +52,9 @@ def close_shutter(self):
 
 
 @app.task(name='camera.start_tether', bind=True)
-def start_tether(self):
+def start_tether(self, output_dir: Path):
     """Start the camera tether."""
-    cam.start_tether()
+    cam.start_tether(output_dir=output_dir)
     self.update_state(state='TETHERED', meta={'status': str(cam)})
     return dict(status=str(cam))
 

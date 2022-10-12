@@ -143,7 +143,7 @@ class Camera:
         return command_output
 
     def start_tether(self,
-                     output_dir: Path = Path('..'),
+                     output_dir: Path = Path('.'),
                      filename_pattern: str | None = None
                      ):
         """Starts a gphoto2 tether and saves images to the given directory."""

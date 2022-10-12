@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import celery
 import typer
 
@@ -34,9 +36,12 @@ def close_shutter(camera: str = typer.Argument(..., help='The name of the camera
 
 
 @typer_app.command('start-tether')
-def start_tether(camera: str = typer.Argument(..., help='The name of the camera.')):
+def start_tether(camera: str = typer.Argument(..., help='The name of the camera.'),
+                 output_dir: Path = typer.Argument(..., help='The output directory.')):
     """Start camera tether."""
-    task = celery_app.send_task('camera.start_tether', queue=camera)
+    task = celery_app.send_task('camera.start_tether',
+                                kwargs=dict(output_dir=output_dir),
+                                queue=camera)
     typer.echo(f'Task: {task.id=}')
 
 
