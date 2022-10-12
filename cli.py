@@ -10,26 +10,27 @@ typer_app = typer.Typer()
 
 
 @typer_app.command('status')
-def status():
+def status(camera: str = typer.Argument(..., help='The name of the camera.')):
     """Get camera status."""
-    task = celery_app.send_task('camera.status')
+    task = celery_app.send_task('camera.status', queue=camera)
     result = task.get(timeout=20)
     typer.echo(f'Result: {result}')
 
 
 @typer_app.command('start-tether')
-def start_tether():
+def start_tether(camera: str = typer.Argument(..., help='The name of the camera.')):
     """Start camera tether."""
-    task = celery_app.send_task('camera.start_tether')
+    task = celery_app.send_task('camera.start_tether', queue=camera)
     typer.echo(f'Task: {task.id=}')
 
 
 @typer_app.command('stop-tether')
-def stop_tether():
+def stop_tether(camera: str = typer.Argument(..., help='The name of the camera.')):
     """Stop camera tether."""
-    task = celery_app.send_task('camera.stop_tether')
+    task = celery_app.send_task('camera.stop_tether', queue=camera)
     typer.echo(f'Stopping tether: {task.id=}')
     result = task.get(timeout=20)
+    typer.echo(f'Result: {result}')
 
 
 if __name__ == '__main__':
