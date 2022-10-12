@@ -31,7 +31,7 @@ def status(self):
     return dict(status=str(cam))
 
 
-@app.task(name='camera.open-shutter', bind=True)
+@app.task(name='camera.open_shutter', bind=True)
 def open_shutter(self):
     """Open the camera shutter."""
     self.update_state(state='OPENING', meta={'status': str(cam)})
@@ -40,7 +40,7 @@ def open_shutter(self):
     return dict(status=str(cam))
 
 
-@app.task(name='camera.close-shutter', bind=True)
+@app.task(name='camera.close_shutter', bind=True)
 def close_shutter(self):
     """Close the camera shutter."""
     self.update_state(state='CLOSING', meta={'status': str(cam)})
@@ -49,7 +49,7 @@ def close_shutter(self):
     return dict(status=str(cam))
 
 
-@app.task(name='camera.start-tether', bind=True)
+@app.task(name='camera.start_tether', bind=True)
 def start_tether(self):
     """Start the camera tether."""
     cam.start_tether()
@@ -57,7 +57,7 @@ def start_tether(self):
     return dict(status=str(cam))
 
 
-@app.task(name='camera.stop-tether', bind=True)
+@app.task(name='camera.stop_tether', bind=True)
 def stop_tether(self):
     """Stop the camera tether."""
     cam.stop_tether()

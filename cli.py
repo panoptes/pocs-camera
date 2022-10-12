@@ -17,6 +17,22 @@ def status(camera: str = typer.Argument(..., help='The name of the camera.')):
     typer.echo(f'Result: {result}')
 
 
+@typer_app.command('open-shutter')
+def open_shutter(camera: str = typer.Argument(..., help='The name of the camera.')):
+    """Open camera shutter."""
+    task = celery_app.send_task('camera.open_shutter', queue=camera)
+    result = task.get(timeout=20)
+    typer.echo(f'Result: {result}')
+
+
+@typer_app.command('close-shutter')
+def close_shutter(camera: str = typer.Argument(..., help='The name of the camera.')):
+    """Close camera shutter."""
+    task = celery_app.send_task('camera.close_shutter', queue=camera)
+    result = task.get(timeout=20)
+    typer.echo(f'Result: {result}')
+
+
 @typer_app.command('start-tether')
 def start_tether(camera: str = typer.Argument(..., help='The name of the camera.')):
     """Start camera tether."""
