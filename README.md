@@ -14,25 +14,6 @@ The service currently does not attempt to filter or parse the arguments, with th
 
 If the `BASE_DIR` envvar is set when the service starts, any `--filename` argument will be saved in the given directory, even if an absolute path is specified. This is designed to allow for proper saving inside a docker container where the absolute path outside the container is mapped to a different path inside the container. See [Examples](#examples) for more details.
 
-## Docker
-<a name="docker"></a>
-
-A Dockerfile is provided and a pre-made image is available at for `amd64` and `arm64` architectures:
-
-```sh
-docker pull gcr.io/panoptes-exp/pocs-camera
-```
-
-The container runs with the `panoptes` (`uid/gid` = `1000:1000`) and the images are saved into the `/images` directory, which should be mapped accordingly when the service is started. See also the information on the `BASE_DIR` env var in the [Examples](#examples) below.
-
-The container also requires access to the USB bus of the host, which can mostly easily be accomplished with the `--privileged` option to `docker run`.
-
-The service is available by default on port `6565`, which should also be provided at runtime.
-
-```sh
-docker run --privileged -p 6565:6565 -v "$PWD/images:/images"
-```
-
 ## Examples
 <a name="examples"></a>
 
