@@ -5,5 +5,3 @@ dependencies:
   - loguru
   - pydantic
   - uvicorn[standard]
-  - pip:
-      - -e "."
